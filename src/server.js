@@ -651,6 +651,79 @@ app.post('/bookings/hold', async (req, res) => {
   }
 });
 
+app.post('/bookings/route-hold', async (req, res) => {
+  const body = z.object({
+    userId: z.string().uuid().optional(),
+    items: z.array(z.object({
+      listingId: z.string().uuid(),
+      unitId: z.string().uuid(),
+      startsAt: z.string().datetime(),
+      endsAt: z.string().datetime(),
+      price: z.number().positive(),
+    })).min(1),
+  });
+  const p = body.safeParse(req.body);
+  if (!p.success) return res.status(400).json(p.error.flatten());
+
+  const client = await pool.connect();
+  try {
+    await client.query('begin');
+
+    const listings = [];
+    for (const it of p.data.items) {
+      const l = (await client.query(`select id, partner_id, location_id from listings where id=$1 and status='active'`, [it.listingId])).rows[0];
+      if (!l) throw new Error('Listing not found');
+      listings.push(l);
+
+      const overlap = await client.query(
+        `select bi.id from booking_items bi
+         join bookings bk on bk.id = bi.booking_id
+         where bi.unit_id=$1
+           and tstzrange(bi.starts_at, bi.ends_at, '[)') && tstzrange($2::timestamptz,$3::timestamptz,'[)')
+           and bk.status in ('hold','pending_payment','confirmed')
+         limit 1`,
+        [it.unitId, it.startsAt, it.endsAt]
+      );
+      if (overlap.rows.length) {
+        await client.query('rollback');
+        return res.status(409).json({ error: 'One of route slots is already reserved' });
+      }
+    }
+
+    const partnerId = listings[0].partner_id;
+    const locationId = listings[0].location_id;
+    if (listings.some(l => l.partner_id !== partnerId || l.location_id !== locationId)) {
+      await client.query('rollback');
+      return res.status(409).json({ error: 'Route modules must be from same partner and location for unified booking' });
+    }
+
+    const total = p.data.items.reduce((a, x) => a + x.price, 0);
+    const holdUntil = new Date(Date.now() + HOLD_MINUTES * 60_000).toISOString();
+    const booking = await client.query(
+      `insert into bookings(user_id,partner_id,location_id,status,total_amount,currency,hold_expires_at)
+       values($1,$2,$3,'hold',$4,'RUB',$5) returning *`,
+      [p.data.userId || null, partnerId, locationId, total, holdUntil]
+    );
+
+    for (const it of p.data.items) {
+      await client.query(
+        `insert into booking_items(booking_id,listing_id,unit_id,starts_at,ends_at,price)
+         values($1,$2,$3,$4,$5,$6)`,
+        [booking.rows[0].id, it.listingId, it.unitId, it.startsAt, it.endsAt, it.price]
+      );
+    }
+
+    await client.query('commit');
+    await sendTelegramNotify(`🧭 Новый маршрут hold: ${booking.rows[0].id} · модулей ${p.data.items.length} · сумма ${booking.rows[0].total_amount} RUB`);
+    res.status(201).json(booking.rows[0]);
+  } catch (e) {
+    await client.query('rollback');
+    res.status(500).json({ error: e.message });
+  } finally {
+    client.release();
+  }
+});
+
 app.post('/bookings/:id/pay', async (req, res) => {
   const params = z.object({ id: z.string().uuid() });
   const body = z.object({ provider: z.enum(['auto', 'mock', 'yookassa']).default('auto') });
