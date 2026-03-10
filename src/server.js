@@ -193,6 +193,39 @@ app.get('/admin/analytics/by-location', requireAdmin, async (req, res) => {
   res.json(rows);
 });
 
+app.get('/admin/finance/summary', requireAdmin, async (req, res) => {
+  const p = z.object({ days: z.coerce.number().int().min(1).max(365).default(30) }).safeParse(req.query);
+  if (!p.success) return res.status(400).json(p.error.flatten());
+  const d = String(p.data.days);
+
+  const totals = (await query(
+    `select
+      coalesce(sum(gross_amount),0)::numeric(12,2) as gross,
+      coalesce(sum(platform_fee_amount),0)::numeric(12,2) as platform_fee,
+      coalesce(sum(acquiring_fee_amount),0)::numeric(12,2) as acquiring_fee,
+      coalesce(sum(partner_payout_amount),0)::numeric(12,2) as partner_payout,
+      count(*)::int as bookings_count
+     from bookings
+     where created_at >= now() - ($1::text || ' days')::interval
+       and status in ('pending_payment','confirmed','completed')`,
+    [d]
+  )).rows[0];
+
+  const latest = (await query(
+    `select b.id,b.created_at,b.status,b.gross_amount,b.platform_fee_amount,b.acquiring_fee_amount,b.partner_payout_amount,
+            p.name as partner_name,l.name as location_name
+     from bookings b
+     left join partners p on p.id=b.partner_id
+     left join locations l on l.id=b.location_id
+     where b.created_at >= now() - ($1::text || ' days')::interval
+     order by b.created_at desc
+     limit 100`,
+    [d]
+  )).rows;
+
+  res.json({ days: p.data.days, totals, latest });
+});
+
 app.get('/admin/analytics/funnel', requireAdmin, async (req, res) => {
   const p = z.object({ days: z.coerce.number().int().min(1).max(90).default(7) }).safeParse(req.query);
   if (!p.success) return res.status(400).json(p.error.flatten());
