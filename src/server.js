@@ -495,6 +495,12 @@ app.post('/partners/:partnerId/listings', requireRole('partner','admin'), ensure
     title: z.string().min(2),
     description: z.string().optional(),
     metadata: z.record(z.string(), z.any()).optional(),
+    rental: z.object({
+      unit: z.enum(['hour','day']).optional(),
+      rate: z.number().positive().optional(),
+      deposit: z.number().nonnegative().optional(),
+      terms: z.string().max(1000).optional(),
+    }).optional(),
     units: z
       .array(z.object({ name: z.string(), capacity: z.number().int().optional(), externalId: z.string().optional() }))
       .min(1),
@@ -510,7 +516,7 @@ app.post('/partners/:partnerId/listings', requireRole('partner','admin'), ensure
     const l = await client.query(
       `insert into listings(partner_id,location_id,category,subcategory,title,description,status,metadata)
        values($1,$2,$3,$4,$5,$6,'active',$7) returning *`,
-      [pp.data.partnerId, pb.data.locationId, pb.data.category, pb.data.subcategory || null, pb.data.title, pb.data.description || null, pb.data.metadata || {}]
+      [pp.data.partnerId, pb.data.locationId, pb.data.category, pb.data.subcategory || null, pb.data.title, pb.data.description || null, { ...(pb.data.metadata || {}), ...(pb.data.rental ? { rental: pb.data.rental } : {}) }]
     );
     for (const u of pb.data.units) {
       await client.query(
