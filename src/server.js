@@ -952,6 +952,50 @@ app.post('/partners/:partnerId/availability/bulk', requireRole('partner','admin'
   res.json(r);
 });
 
+app.post('/partners/:partnerId/availability/sync-busy', requireRole('partner','admin'), ensurePartnerAccess, async (req, res) => {
+  const pp = z.object({ partnerId: z.string().uuid() }).safeParse(req.params);
+  const pb = z.object({
+    source: z.string().default('partner_crm'),
+    items: z.array(z.object({
+      unitId: z.string().uuid(),
+      startsAt: z.string().datetime(),
+      endsAt: z.string().datetime(),
+      externalRef: z.string().optional(),
+    })).min(1).max(500),
+  }).safeParse(req.body);
+  if (!pp.success || !pb.success) return res.status(400).json({ params: pp.error?.flatten(), body: pb.error?.flatten() });
+
+  const client = await pool.connect();
+  try {
+    await client.query('begin');
+    let synced = 0;
+    for (const it of pb.data.items) {
+      const check = (await client.query(
+        `select l.partner_id from listing_units u join listings l on l.id=u.listing_id where u.id=$1`,
+        [it.unitId]
+      )).rows[0];
+      if (!check || check.partner_id !== pp.data.partnerId) continue;
+
+      await client.query(
+        `insert into availability_slots(unit_id,starts_at,ends_at,is_available,source)
+         values($1,$2,$3,false,'sync')
+         on conflict(unit_id,starts_at,ends_at)
+         do update set is_available=false, source='sync'`,
+        [it.unitId, it.startsAt, it.endsAt]
+      );
+      synced++;
+    }
+    await client.query('commit');
+    await sendTelegramNotify(`🔄 Sync busy slots: partner ${pp.data.partnerId} · ${synced} слотов`);
+    res.json({ ok: true, synced, source: pb.data.source });
+  } catch (e) {
+    await client.query('rollback');
+    res.status(500).json({ error: e.message });
+  } finally {
+    client.release();
+  }
+});
+
 app.post('/partners/:partnerId/listings/:listingId/submit', requireRole('partner','admin'), ensurePartnerAccess, async (req, res) => {
   const p = z.object({ partnerId: z.string().uuid(), listingId: z.string().uuid() }).safeParse(req.params);
   if (!p.success) return res.status(400).json(p.error.flatten());
