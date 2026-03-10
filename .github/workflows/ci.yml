@@ -26,6 +26,17 @@ jobs:
       - name: Start stack
         run: docker compose up -d
 
+      - name: Apply schema + seed
+        run: |
+          docker exec -i baikal-booking-postgres psql -U baikal -d baikal_booking < db/schema.sql
+          docker exec -i baikal-booking-postgres psql -U baikal -d baikal_booking < db/seed.sql
+
+      - name: Start API
+        run: |
+          export DATABASE_URL='postgresql://baikal:baikal@127.0.0.1:5434/baikal_booking'
+          export PORT=3200
+          nohup npm start > api.log 2>&1 &
+
       - name: Wait for API
         run: |
           for i in {1..40}; do
@@ -39,13 +50,20 @@ jobs:
           docker compose logs --no-color || true
           exit 1
 
-      - name: Smoke health
+      - name: Smoke e2e
         run: |
           curl -fsS http://127.0.0.1:3200/health
+          ROOT=$(curl -fsS http://127.0.0.1:3200/locations | python3 -c 'import sys,json;print(json.load(sys.stdin)[0]["id"])')
+          LOC=$(curl -fsS "http://127.0.0.1:3200/locations?parentId=$ROOT" | python3 -c 'import sys,json;print(json.load(sys.stdin)[0]["id"])')
+          LID=$(curl -fsS "http://127.0.0.1:3200/catalog?locationId=$LOC" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d[0]["id"])')
+          UNIT=$(curl -fsS "http://127.0.0.1:3200/catalog?locationId=$LOC" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d[0]["units"][0]["id"])')
+          curl -fsS -X POST http://127.0.0.1:3200/bookings/hold -H 'content-type: application/json' -d '{"listingId":"'"$LID"'","unitId":"'"$UNIT"'","startsAt":"2026-03-11T10:00:00.000Z","endsAt":"2026-03-11T12:00:00.000Z","price":3000}' >/dev/null
 
       - name: Print compose logs on failure
         if: failure()
-        run: docker compose logs --no-color || true
+        run: |
+          docker compose logs --no-color || true
+          cat api.log || true
 
       - name: Stop stack
         if: always()

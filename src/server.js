@@ -1,6 +1,9 @@
 import express from 'express';
 import dotenv from 'dotenv';
 import { z } from 'zod';
+import jwt from 'jsonwebtoken';
+import fs from 'fs';
+import path from 'path';
 import { query, pool } from './db.js';
 import { verifyTelegramInitData, upsertUserFromInitData } from './telegramAuth.js';
 import { createPaymentForBooking, markPaymentPaidByBooking } from './payments.js';
@@ -8,11 +11,14 @@ import { createPaymentForBooking, markPaymentPaidByBooking } from './payments.js
 dotenv.config();
 
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: '3mb' }));
 app.use(express.static('public'));
+const uploadsDir = path.resolve('public/uploads');
+fs.mkdirSync(uploadsDir, { recursive: true });
+app.use('/uploads', express.static(uploadsDir));
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+  res.header('Access-Control-Allow-Methods', 'GET,POST,DELETE,OPTIONS');
   res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   if (req.method === 'OPTIONS') return res.sendStatus(204);
   next();
@@ -32,17 +38,116 @@ async function sendTelegramNotify(text) {
   } catch {}
 }
 
+function signToken(payload) {
+  const secret = process.env.JWT_SECRET || 'change_me_jwt_secret';
+  return jwt.sign(payload, secret, { expiresIn: '14d' });
+}
+
+function authFromToken(req) {
+  const h = req.headers.authorization || '';
+  const m = h.match(/^Bearer\s+(.+)$/i);
+  if (!m) return null;
+  try {
+    const secret = process.env.JWT_SECRET || 'change_me_jwt_secret';
+    return jwt.verify(m[1], secret);
+  } catch {
+    return null;
+  }
+}
+
+function requireAuth(req, res, next) {
+  const user = authFromToken(req);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  req.auth = user;
+  next();
+}
+
+function requireRole(...roles) {
+  return (req, res, next) => {
+    const user = authFromToken(req);
+    if (!user) return res.status(401).json({ error: 'Unauthorized' });
+    if (!roles.includes(user.role)) return res.status(403).json({ error: 'Forbidden' });
+    req.auth = user;
+    next();
+  };
+}
+
 function requireAdmin(req, res, next) {
+  const user = authFromToken(req);
+  if (user?.role === 'admin') {
+    req.auth = user;
+    return next();
+  }
   const key = process.env.ADMIN_API_KEY;
   if (!key) return res.status(503).json({ error: 'ADMIN_API_KEY is not set' });
   const provided = req.headers['x-admin-key'];
   if (!provided || provided !== key) return res.status(403).json({ error: 'Forbidden' });
+  req.auth = { role: 'admin' };
   next();
 }
+
+function ensurePartnerAccess(req, res, next) {
+  if (req.auth?.role === 'admin') return next();
+  if (!req.auth?.partnerId || req.auth.partnerId !== req.params.partnerId) {
+    return res.status(403).json({ error: 'Partner scope denied' });
+  }
+  next();
+}
+
+const rateWindowMs = Number(process.env.RATE_LIMIT_WINDOW_MS || 60_000);
+const rateMax = Number(process.env.RATE_LIMIT_MAX || 120);
+const rateMap = new Map();
+app.use((req, res, next) => {
+  const ip = req.headers['x-forwarded-for']?.toString().split(',')[0]?.trim() || req.socket.remoteAddress || 'unknown';
+  const key = `${ip}:${req.path}`;
+  const now = Date.now();
+  const entry = rateMap.get(key) || { count: 0, resetAt: now + rateWindowMs };
+  if (now > entry.resetAt) {
+    entry.count = 0;
+    entry.resetAt = now + rateWindowMs;
+  }
+  entry.count += 1;
+  rateMap.set(key, entry);
+  if (entry.count > rateMax) return res.status(429).json({ error: 'Too many requests' });
+  next();
+});
 
 app.get('/health', async (_, res) => {
   await query('select 1');
   res.json({ ok: true });
+});
+
+app.post('/auth/token', async (req, res) => {
+  const p = z.object({
+    userId: z.string().uuid().optional(),
+    partnerId: z.string().uuid().optional(),
+    role: z.enum(['user', 'partner', 'admin']),
+    adminKey: z.string().optional(),
+  }).safeParse(req.body);
+  if (!p.success) return res.status(400).json(p.error.flatten());
+
+  if (p.data.role === 'admin') {
+    if (!process.env.ADMIN_API_KEY || p.data.adminKey !== process.env.ADMIN_API_KEY) {
+      return res.status(403).json({ error: 'Bad admin key' });
+    }
+  }
+  const token = signToken({ userId: p.data.userId || null, partnerId: p.data.partnerId || null, role: p.data.role });
+  res.json({ token });
+});
+
+app.post('/media/upload-base64', requireRole('partner','admin'), async (req, res) => {
+  const p = z.object({
+    filename: z.string().min(1),
+    contentType: z.string().startsWith('image/'),
+    dataBase64: z.string().min(10),
+  }).safeParse(req.body);
+  if (!p.success) return res.status(400).json(p.error.flatten());
+
+  const safeName = `${Date.now()}-${p.data.filename}`.replace(/[^a-zA-Z0-9._-]/g, '_');
+  const fp = path.join(uploadsDir, safeName);
+  const buf = Buffer.from(p.data.dataBase64, 'base64');
+  fs.writeFileSync(fp, buf);
+  res.status(201).json({ url: `/uploads/${safeName}` });
 });
 
 app.post('/analytics/event', async (req, res) => {
@@ -61,6 +166,21 @@ app.post('/analytics/event', async (req, res) => {
     [p.data.eventType, p.data.userId || null, p.data.listingId || null, p.data.locationId || null, p.data.payload || {}]
   )).rows[0];
   res.status(201).json(r);
+});
+
+app.get('/admin/analytics/by-location', requireAdmin, async (req, res) => {
+  const p = z.object({ days: z.coerce.number().int().min(1).max(90).default(7) }).safeParse(req.query);
+  if (!p.success) return res.status(400).json(p.error.flatten());
+  const rows = (await query(
+    `select coalesce(l.name,'unknown') as location, count(*)::int as events
+     from analytics_events ae
+     left join locations l on l.id=ae.location_id
+     where ae.created_at >= now() - ($1::text || ' days')::interval
+     group by coalesce(l.name,'unknown')
+     order by events desc`,
+    [String(p.data.days)]
+  )).rows;
+  res.json(rows);
 });
 
 app.get('/admin/analytics/funnel', requireAdmin, async (req, res) => {
@@ -102,7 +222,8 @@ app.post('/auth/telegram', async (req, res) => {
   if (!valid) return res.status(401).json({ error: 'Invalid Telegram initData' });
 
   const user = await upsertUserFromInitData(p.data.initData);
-  res.json({ user });
+  const token = signToken({ userId: user.id, role: user.role || 'user' });
+  res.json({ user, token });
 });
 
 app.post('/ai/chat', async (req, res) => {
@@ -205,6 +326,18 @@ app.get('/bundles', async (req, res) => {
   res.json(bundles);
 });
 
+app.get('/admin/bundles', requireAdmin, async (req, res) => {
+  const rows = (await query(`select b.*, l.name as location_name from bundles b left join locations l on l.id=b.location_id order by b.created_at desc limit 200`)).rows;
+  res.json(rows);
+});
+
+app.delete('/admin/bundles/:id', requireAdmin, async (req, res) => {
+  const p = z.object({ id: z.string().uuid() }).safeParse(req.params);
+  if (!p.success) return res.status(400).json(p.error.flatten());
+  await query(`delete from bundles where id=$1`, [p.data.id]);
+  res.json({ ok: true });
+});
+
 app.post('/admin/bundles', requireAdmin, async (req, res) => {
   const p = z.object({
     locationId: z.string().uuid(),
@@ -303,7 +436,7 @@ app.post('/partners/register', async (req, res) => {
   }
 });
 
-app.get('/partners/:partnerId/dashboard', async (req, res) => {
+app.get('/partners/:partnerId/dashboard', requireRole('partner','admin'), ensurePartnerAccess, async (req, res) => {
   const p = z.object({ partnerId: z.string().uuid() }).safeParse(req.params);
   if (!p.success) return res.status(400).json(p.error.flatten());
   const { partnerId } = p.data;
@@ -320,7 +453,7 @@ app.get('/partners/:partnerId/dashboard', async (req, res) => {
   res.json({ partner, listings: listings.rows, bookings: bookings.rows, integrations: integrations.rows });
 });
 
-app.post('/partners/:partnerId/integrations', async (req, res) => {
+app.post('/partners/:partnerId/integrations', requireRole('partner','admin'), ensurePartnerAccess, async (req, res) => {
   const params = z.object({ partnerId: z.string().uuid() });
   const body = z.object({
     type: z.enum(['api', 'csv', 'ical']),
@@ -343,7 +476,7 @@ app.post('/partners/:partnerId/integrations', async (req, res) => {
   res.status(201).json(r.rows[0]);
 });
 
-app.post('/partners/:partnerId/listings', async (req, res) => {
+app.post('/partners/:partnerId/listings', requireRole('partner','admin'), ensurePartnerAccess, async (req, res) => {
   const params = z.object({ partnerId: z.string().uuid() });
   const body = z.object({
     locationId: z.string().uuid(),
@@ -665,7 +798,7 @@ app.post('/users/:userId/preferences', async (req, res) => {
 });
 
 // Moderation flow
-app.get('/partners/:partnerId/listings', async (req, res) => {
+app.get('/partners/:partnerId/listings', requireRole('partner','admin'), ensurePartnerAccess, async (req, res) => {
   const p = z.object({ partnerId: z.string().uuid() }).safeParse(req.params);
   if (!p.success) return res.status(400).json(p.error.flatten());
   const rows = (await query(
@@ -676,7 +809,7 @@ app.get('/partners/:partnerId/listings', async (req, res) => {
   res.json(rows);
 });
 
-app.get('/partners/:partnerId/listings/:listingId/units', async (req, res) => {
+app.get('/partners/:partnerId/listings/:listingId/units', requireRole('partner','admin'), ensurePartnerAccess, async (req, res) => {
   const p = z.object({ partnerId: z.string().uuid(), listingId: z.string().uuid() }).safeParse(req.params);
   if (!p.success) return res.status(400).json(p.error.flatten());
   const own = (await query(`select id from listings where id=$1 and partner_id=$2`, [p.data.listingId, p.data.partnerId])).rows[0];
@@ -685,7 +818,7 @@ app.get('/partners/:partnerId/listings/:listingId/units', async (req, res) => {
   res.json(rows);
 });
 
-app.post('/partners/:partnerId/listings/:listingId/price', async (req, res) => {
+app.post('/partners/:partnerId/listings/:listingId/price', requireRole('partner','admin'), ensurePartnerAccess, async (req, res) => {
   const pp = z.object({ partnerId: z.string().uuid(), listingId: z.string().uuid() }).safeParse(req.params);
   const pb = z.object({ priceLabel: z.string().min(1) }).safeParse(req.body);
   if (!pp.success || !pb.success) return res.status(400).json({ params: pp.error?.flatten(), body: pb.error?.flatten() });
@@ -699,7 +832,7 @@ app.post('/partners/:partnerId/listings/:listingId/price', async (req, res) => {
   res.json(r);
 });
 
-app.post('/partners/:partnerId/availability/bulk', async (req, res) => {
+app.post('/partners/:partnerId/availability/bulk', requireRole('partner','admin'), ensurePartnerAccess, async (req, res) => {
   const pp = z.object({ partnerId: z.string().uuid() }).safeParse(req.params);
   const pb = z.object({
     unitId: z.string().uuid(),
@@ -727,7 +860,7 @@ app.post('/partners/:partnerId/availability/bulk', async (req, res) => {
   res.json(r);
 });
 
-app.post('/partners/:partnerId/listings/:listingId/submit', async (req, res) => {
+app.post('/partners/:partnerId/listings/:listingId/submit', requireRole('partner','admin'), ensurePartnerAccess, async (req, res) => {
   const p = z.object({ partnerId: z.string().uuid(), listingId: z.string().uuid() }).safeParse(req.params);
   if (!p.success) return res.status(400).json(p.error.flatten());
 
@@ -779,7 +912,7 @@ app.post('/admin/listings/:listingId/moderate', requireAdmin, async (req, res) =
   res.json({ ok: true });
 });
 
-app.post('/partners/:partnerId/import/csv', async (req, res) => {
+app.post('/partners/:partnerId/import/csv', requireRole('partner','admin'), ensurePartnerAccess, async (req, res) => {
   const pp = z.object({ partnerId: z.string().uuid() }).safeParse(req.params);
   const pb = z.object({ csv: z.string().min(5), locationId: z.string().uuid() }).safeParse(req.body);
   if (!pp.success || !pb.success) return res.status(400).json({ params: pp.error?.flatten(), body: pb.error?.flatten() });
@@ -813,7 +946,7 @@ app.post('/partners/:partnerId/import/csv', async (req, res) => {
   res.json({ ok: true, imported });
 });
 
-app.post('/partners/:partnerId/webhooks/:integrationId', async (req, res) => {
+app.post('/partners/:partnerId/webhooks/:integrationId', requireRole('partner','admin'), ensurePartnerAccess, async (req, res) => {
   const pp = z.object({ partnerId: z.string().uuid(), integrationId: z.string().uuid() }).safeParse(req.params);
   if (!pp.success) return res.status(400).json(pp.error.flatten());
 
@@ -826,6 +959,20 @@ app.post('/partners/:partnerId/webhooks/:integrationId', async (req, res) => {
   await sendTelegramNotify(`🔌 Webhook принят: partner ${pp.data.partnerId}, integration ${pp.data.integrationId}`);
   res.json({ ok: true });
 });
+
+const EXPIRE_INTERVAL_MS = Number(process.env.EXPIRE_INTERVAL_MS || 60_000);
+setInterval(async () => {
+  try {
+    const r = await query(
+      `update bookings set status='expired'
+       where status='hold' and hold_expires_at < now()
+       returning id`
+    );
+    if (r.rowCount > 0) {
+      await sendTelegramNotify(`⏳ Истекли hold-брони: ${r.rowCount}`);
+    }
+  } catch {}
+}, EXPIRE_INTERVAL_MS);
 
 const port = Number(process.env.PORT || 3200);
 app.listen(port, () => console.log(`baikal-booking api on :${port}`));
