@@ -1,0 +1,12 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: baikal-booking-postgres
+    environment:
+      POSTGRES_DB: baikal_booking
+      POSTGRES_USER: baikal
+      POSTGRES_PASSWORD: baikal
+    ports:
+      - "5434:5432"
+    volumes:
+      - ./db/data:/var/lib/postgresql/data

@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Baikal Booking</title>
+  <style>
+    body{font-family:Inter,Arial,sans-serif;background:#0b1220;color:#e7eefc;margin:0;padding:16px}
+    .card{background:#121b2e;border:1px solid #24314f;border-radius:12px;padding:12px;margin-bottom:12px}
+    select,button{width:100%;padding:10px;border-radius:10px;border:1px solid #30406a;background:#0f1729;color:#e7eefc}
+    .grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+    .item{padding:10px;border:1px solid #33456f;border-radius:10px;margin:8px 0}
+  </style>
+</head>
+<body>
+  <h2>Baikal Booking</h2>
+  <p><a href="/partner.html" style="color:#7db1ff">Кабинет партнёра →</a></p>
+  <div class="card">
+    <label>Локация</label>
+    <select id="location"></select>
+  </div>
+
+  <div class="card">
+    <label>Категория</label>
+    <div class="grid">
+      <button data-cat="equipment">Техника</button>
+      <button data-cat="stay">Места</button>
+      <button data-cat="activity">Развлечения</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Каталог</h3>
+    <div id="list"></div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
