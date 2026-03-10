@@ -1082,18 +1082,46 @@ app.post('/partners/:partnerId/import/csv', requireRole('partner','admin'), ensu
   res.json({ ok: true, imported });
 });
 
-app.post('/partners/:partnerId/webhooks/:integrationId', requireRole('partner','admin'), ensurePartnerAccess, async (req, res) => {
+app.post('/partners/:partnerId/webhooks/:integrationId', async (req, res) => {
   const pp = z.object({ partnerId: z.string().uuid(), integrationId: z.string().uuid() }).safeParse(req.params);
   if (!pp.success) return res.status(400).json(pp.error.flatten());
+
+  const integ = (await query(
+    `select * from partner_integrations where id=$1 and partner_id=$2`,
+    [pp.data.integrationId, pp.data.partnerId]
+  )).rows[0];
+  if (!integ) return res.status(404).json({ error: 'Integration not found' });
+
+  const token = req.headers['x-integration-token'];
+  const expected = integ.credentials_ref;
+  if (expected && token !== expected) return res.status(403).json({ error: 'Bad integration token' });
+
+  const payload = req.body || {};
+  const busy = Array.isArray(payload.busySlots) ? payload.busySlots : (Array.isArray(payload.items) ? payload.items : []);
+
+  let synced = 0;
+  if (busy.length) {
+    for (const it of busy) {
+      if (!it.unitId || !it.startsAt || !it.endsAt) continue;
+      await query(
+        `insert into availability_slots(unit_id,starts_at,ends_at,is_available,source)
+         values($1,$2,$3,false,'sync')
+         on conflict(unit_id,starts_at,ends_at)
+         do update set is_available=false, source='sync'`,
+        [it.unitId, it.startsAt, it.endsAt]
+      );
+      synced++;
+    }
+  }
 
   await query(
     `insert into partner_sync_jobs(integration_id,job_type,status,started_at,finished_at,error_text)
      values($1,'booking_push','success',now(),now(),$2)`,
-    [pp.data.integrationId, JSON.stringify(req.body || {})]
+    [pp.data.integrationId, JSON.stringify({ payload, synced })]
   );
 
-  await sendTelegramNotify(`🔌 Webhook принят: partner ${pp.data.partnerId}, integration ${pp.data.integrationId}`);
-  res.json({ ok: true });
+  await sendTelegramNotify(`🔌 Webhook sync: partner ${pp.data.partnerId}, integration ${pp.data.integrationId}, synced ${synced}`);
+  res.json({ ok: true, synced });
 });
 
 const EXPIRE_INTERVAL_MS = Number(process.env.EXPIRE_INTERVAL_MS || 60_000);
