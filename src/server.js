@@ -669,11 +669,10 @@ app.post('/bookings/route-hold', async (req, res) => {
   try {
     await client.query('begin');
 
-    const listings = [];
+    const grouped = new Map();
     for (const it of p.data.items) {
       const l = (await client.query(`select id, partner_id, location_id from listings where id=$1 and status='active'`, [it.listingId])).rows[0];
       if (!l) throw new Error('Listing not found');
-      listings.push(l);
 
       const overlap = await client.query(
         `select bi.id from booking_items bi
@@ -688,34 +687,38 @@ app.post('/bookings/route-hold', async (req, res) => {
         await client.query('rollback');
         return res.status(409).json({ error: 'One of route slots is already reserved' });
       }
+
+      const key = `${l.partner_id}:${l.location_id}`;
+      if (!grouped.has(key)) grouped.set(key, { partnerId: l.partner_id, locationId: l.location_id, items: [] });
+      grouped.get(key).items.push(it);
     }
 
-    const partnerId = listings[0].partner_id;
-    const locationId = listings[0].location_id;
-    if (listings.some(l => l.partner_id !== partnerId || l.location_id !== locationId)) {
-      await client.query('rollback');
-      return res.status(409).json({ error: 'Route modules must be from same partner and location for unified booking' });
-    }
-
-    const total = p.data.items.reduce((a, x) => a + x.price, 0);
     const holdUntil = new Date(Date.now() + HOLD_MINUTES * 60_000).toISOString();
-    const booking = await client.query(
-      `insert into bookings(user_id,partner_id,location_id,status,total_amount,currency,hold_expires_at)
-       values($1,$2,$3,'hold',$4,'RUB',$5) returning *`,
-      [p.data.userId || null, partnerId, locationId, total, holdUntil]
-    );
+    const bookings = [];
 
-    for (const it of p.data.items) {
-      await client.query(
-        `insert into booking_items(booking_id,listing_id,unit_id,starts_at,ends_at,price)
-         values($1,$2,$3,$4,$5,$6)`,
-        [booking.rows[0].id, it.listingId, it.unitId, it.startsAt, it.endsAt, it.price]
+    for (const g of grouped.values()) {
+      const total = g.items.reduce((a, x) => a + x.price, 0);
+      const booking = await client.query(
+        `insert into bookings(user_id,partner_id,location_id,status,total_amount,currency,hold_expires_at)
+         values($1,$2,$3,'hold',$4,'RUB',$5) returning *`,
+        [p.data.userId || null, g.partnerId, g.locationId, total, holdUntil]
       );
+
+      for (const it of g.items) {
+        await client.query(
+          `insert into booking_items(booking_id,listing_id,unit_id,starts_at,ends_at,price)
+           values($1,$2,$3,$4,$5,$6)`,
+          [booking.rows[0].id, it.listingId, it.unitId, it.startsAt, it.endsAt, it.price]
+        );
+      }
+
+      bookings.push(booking.rows[0]);
     }
 
     await client.query('commit');
-    await sendTelegramNotify(`🧭 Новый маршрут hold: ${booking.rows[0].id} · модулей ${p.data.items.length} · сумма ${booking.rows[0].total_amount} RUB`);
-    res.status(201).json(booking.rows[0]);
+    const totalAll = bookings.reduce((a, b) => a + Number(b.total_amount || 0), 0);
+    await sendTelegramNotify(`🧭 Новый маршрут hold: заказов ${bookings.length} · модулей ${p.data.items.length} · сумма ${totalAll} RUB`);
+    res.status(201).json({ ok: true, bookings, total: totalAll, groupedByPartners: bookings.length });
   } catch (e) {
     await client.query('rollback');
     res.status(500).json({ error: e.message });
