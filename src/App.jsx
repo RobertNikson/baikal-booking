@@ -23,7 +23,7 @@ const BaikalRentApp = () => {
   const confirmBooking = async (listing) => {
     WebApp.MainButton.showProgress();
     try {
-      const response = await fetch('https://clever-cows-spend.loca.lt/api/bookings/hold', {
+      const response = await fetch('https://von-untitled-arg-modem.trycloudflare.com/api/bookings/hold', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -66,7 +66,7 @@ const BaikalRentApp = () => {
 
     try {
       // Logic for AI Concierge call
-      const response = await fetch('https://clever-cows-spend.loca.lt/api/ai/concierge', {
+      const response = await fetch('https://von-untitled-arg-modem.trycloudflare.com/api/ai/concierge', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: input, history: messages.slice(-5) })
