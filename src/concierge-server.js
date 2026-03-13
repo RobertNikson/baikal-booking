@@ -22,16 +22,19 @@ app.post('/api/ai/concierge', async (req, res) => {
 
   try {
     // 1. Get available locations for context
-    const locations = (await query('SELECT name FROM locations WHERE is_active=true')).rows.map(r => r.name);
+    const locRows = (await query('SELECT name, type FROM locations WHERE is_active=true')).rows;
+    const locationContext = locRows.map(r => `${r.name} (${r.type})`).join(', ');
     
     // 2. Simple intent detection (can be improved with specialized prompt)
     const prompt = `
       Ты — AI-консьерж сервиса BaikalRent. Помогаешь туристам найти жилье, технику или экскурсии на Байкале.
-      Доступные локации: ${locations.join(', ')}.
+      Доступные локации: ${locationContext}.
       
       Твоя задача:
-      - Быть кратким и полезным.
+      - Быть кратким, дружелюбным и полезным.
       - Если пользователь ищет что-то конкретное (место, даты, количество человек), подтверди параметры.
+      - Категории: проживание, прокат, покушать, экскурсии (пешие/с гидом/на транспорте), точки интереса (музеи, клубы, бары, нерпинарии, зоопарки), пакеты отдыха (1-7 дней).
+      - Используй названия локаций из списка выше.
       - Если в базе есть подходящие варианты (сейчас симулируем поиск), предложи их.
       
       Отвечай в формате JSON:
