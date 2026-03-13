@@ -45,6 +45,9 @@ app.post('/api/ai/concierge', async (req, res) => {
       }
     `;
 
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 15000);
+
     const response = await fetch('https://api.deepseek.com/chat/completions', {
       method: 'POST',
       headers: {
@@ -59,11 +62,18 @@ app.post('/api/ai/concierge', async (req, res) => {
           { role: 'user', content: message }
         ],
         response_format: { type: 'json_object' }
-      })
+      }),
+      signal: ctrl.signal,
     });
 
+    clearTimeout(t);
+
     const data = await response.json();
-    const result = JSON.parse(data.choices[0].message.content);
+    if (!response.ok) {
+      return res.status(response.status).json({ error: data?.error?.message || 'AI provider error' });
+    }
+    const raw = data?.choices?.[0]?.message?.content;
+    const result = raw ? JSON.parse(raw) : { text: 'Не удалось получить ответ.', action: 'chat', params: {} };
 
     // 3. If action is search, fetch real listings with units
     let listings = [];

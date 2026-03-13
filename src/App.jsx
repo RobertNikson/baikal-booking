@@ -39,12 +39,18 @@ const BaikalRentApp = () => {
     setIsLoading(true);
 
     try {
-      const response = await fetch('https://von-untitled-arg-modem.trycloudflare.com/api/ai/concierge', {
+      const ctrl = new AbortController();
+      const tm = setTimeout(() => ctrl.abort(), 20000);
+
+      const response = await fetch('https://motorola-enormous-extending-ebooks.trycloudflare.com/api/ai/concierge', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: input, history: messages.slice(-5) })
+        body: JSON.stringify({ message: input, history: messages.slice(-5) }),
+        signal: ctrl.signal,
       });
+      clearTimeout(tm);
       const data = await response.json();
+      if (!response.ok) throw new Error(data?.error || 'AI request failed');
       setMessages(prev => [...prev, { id: Date.now() + 1, role: 'ai', text: data.text || 'Прости, я отвлекся. Попробуй еще раз?' }]);
       if (data.listings?.length > 0) {
         setListings(data.listings);
