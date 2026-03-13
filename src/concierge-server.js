@@ -11,7 +11,28 @@ dotenv.config();
 
 const app = express();
 app.use(express.json());
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  next();
+});
 app.use(express.static('public'));
+
+app.get('/api/locations', async (_req, res) => {
+  try {
+    const rows = (await query(`
+      select id, name, slug, type, is_active, metadata
+      from locations
+      where is_active=true
+      order by name
+    `)).rows;
+    res.json(rows);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
 
 // AI Assistant Endpoint with DB awareness (Simulated Search for now)
 app.post('/api/ai/concierge', async (req, res) => {
