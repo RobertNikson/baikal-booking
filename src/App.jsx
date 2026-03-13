@@ -1,268 +1,122 @@
-import React, { useState, useEffect } from 'react';
-import { MessageSquare, Calendar, MapPin, Search, Send, User, ChevronRight, Filter } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { MessageSquare, Calendar, Search, Send, User } from 'lucide-react';
 
-// Safe access to WebApp
-const getWebApp = () => {
-  if (typeof window !== 'undefined' && window.Telegram && window.Telegram.WebApp) {
-    return window.Telegram.WebApp;
-  }
-  return null;
-};
+const LOCATIONS = [
+  { name: 'Листвянка', image: 'https://images.unsplash.com/photo-1548013146-72479768bbaa?q=80&w=1000', description: 'Ворота Байкала: нерпинарий, музей, набережная, катера.' },
+  { name: 'Большие Коты', image: 'https://images.unsplash.com/photo-1472396961693-142e6e269027?q=80&w=1000', description: 'Тихий поселок для треккинга и спокойного отдыха.' },
+  { name: 'Порт Байкал', image: 'https://images.unsplash.com/photo-1506197603052-3cc9c3a201bd?q=80&w=1000', description: 'Историческая точка КБЖД, прогулки и виды на озеро.' },
+  { name: 'Большое Голоустное', image: 'https://images.unsplash.com/photo-1469474968028-56623f02e42e?q=80&w=1000', description: 'Пляжи, смотровые точки и выезды на природу.' },
+  { name: 'Остров Ольхон', image: 'https://images.unsplash.com/photo-1590505299054-938833919967?q=80&w=1000', description: 'Место силы: Шаманка, степи, закаты и туры на мыс Хобой.' },
+  { name: 'Малое море', image: 'https://images.unsplash.com/photo-1518156677180-95a2893f3e9f?q=80&w=1000', description: 'Бухты и базы отдыха, удобный формат для семей.' },
+  { name: 'Хужир', image: 'https://images.unsplash.com/photo-1501785888041-af3ef285b470?q=80&w=1000', description: 'Главная точка Ольхона: кафе, экскурсии, прокат.' },
+  { name: 'Байкальск', image: 'https://images.unsplash.com/photo-1482192505345-5655af888cc4?q=80&w=1000', description: 'Южное побережье, горнолыжка и активный отдых.' },
+  { name: 'Бухта Песчаная', image: 'https://images.unsplash.com/photo-1439066615861-d1af74d74000?q=80&w=1000', description: 'Одна из самых красивых бухт, пляжный формат отдыха.' },
+  { name: 'Бухта Зуун Хагуун', image: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?q=80&w=1000', description: 'Удаленная бухта для приватного и спокойного отдыха.' },
+  { name: 'Сарайский пляж', image: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?q=80&w=1000', description: 'Длинный песчаный пляж рядом с Хужиром.' },
+  { name: 'Гранатовый пляж', image: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?q=80&w=1000', description: 'Живописная точка для фотосетов и отдыха у воды.' },
+];
 
-const BaikalRentApp = () => {
+function localAnswer(text) {
+  const q = text.toLowerCase();
+  const found = LOCATIONS.find((l) => q.includes(l.name.toLowerCase()));
+  if (found) return `📍 ${found.name}: ${found.description}`;
+
+  if (q.includes('прожив')) return '🏠 Проживание: могу предложить Листвянку, Хужир, Малое море и Байкальск под разный бюджет.';
+  if (q.includes('прокат')) return '🚲 Прокат: велосипеды, SUP, катера, авто и снаряжение доступны в Листвянке, Хужире и на Малом море.';
+  if (q.includes('экскурс')) return '🗺️ Экскурсии: пешие, с гидом, водные и авто-туры (в т.ч. Хобой/Ольхон/КБЖД).';
+  if (q.includes('покуш') || q.includes('еда') || q.includes('кафе')) return '🍽️ По еде: в Листвянке и Хужире лучший выбор кафе и локальной кухни.';
+  if (q.includes('пакет') || q.includes('день')) return '🎁 Пакеты: могу собрать маршрут на 1–7 дней по бюджету и активности (лайт/средний/актив).';
+
+  return 'Я помогу подобрать отдых на Байкале: локация, бюджет, активность, проживание/прокат/экскурсии. Напиши критерии 👇';
+}
+
+export default function App() {
   const [activeTab, setActiveTab] = useState('chat');
-  const [activeCategory, setActiveCategory] = useState('all');
+  const [selectedLocation, setSelectedLocation] = useState(null);
   const [messages, setMessages] = useState([
-    { id: 1, role: 'ai', text: 'Привет! Я твой ИИ-консьерж на Байкале. Помогу найти жилье, забронировать технику или составить маршрут. Что планируешь?' }
+    { id: 1, role: 'ai', text: 'Привет! Я офлайн-консьерж BaikalRent. Уже работаю без туннелей и внешнего AI API.' },
   ]);
   const [input, setInput] = useState('');
-  const [listings, setListings] = useState([]);
-  const [locations, setLocations] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [selectedLocation, setSelectedLocation] = useState(null);
 
-  const categories = [
-    { id: 'all', name: 'Все', icon: '🌟' },
-    { id: 'stay', name: 'Проживание', icon: '🏠' },
-    { id: 'rental', name: 'Прокат', icon: '🚲' },
-    { id: 'food', name: 'Покушать', icon: '🍽️' },
-    { id: 'excursion', name: 'Экскурсии', icon: '🗺️' },
-    { id: 'poi', name: 'Интересное', icon: '🏛️' },
-    { id: 'bundle', name: 'Пакеты', icon: '🎁' },
-  ];
-
-  const fetchLocations = async () => {
-    try {
-      const response = await fetch('https://jobs-direction-epa-elections.trycloudflare.com/api/locations');
-      const data = await response.json();
-      if (Array.isArray(data)) setLocations(data);
-    } catch (e) { 
-      console.error('Fetch locations error:', e); 
-    }
-  };
-
-  useEffect(() => {
-    const WebApp = getWebApp();
-    if (WebApp) {
-      WebApp.ready();
-      WebApp.expand();
-      if (WebApp.themeParams && WebApp.themeParams.bg_color) {
-        document.body.style.backgroundColor = WebApp.themeParams.bg_color;
-      }
-    }
-    fetchLocations();
-  }, []);
+  const quick = useMemo(() => LOCATIONS.slice(0, 8), []);
 
   const sendMessage = async () => {
     if (!input.trim()) return;
-    
-    const userMsg = { id: Date.now(), role: 'user', text: input };
-    setMessages(prev => [...prev, userMsg]);
+    const text = input.trim();
+    setMessages((m) => [...m, { id: Date.now(), role: 'user', text }]);
     setInput('');
     setIsLoading(true);
-
-    try {
-      const ctrl = new AbortController();
-      const tm = setTimeout(() => ctrl.abort(), 20000);
-
-      const response = await fetch('https://jobs-direction-epa-elections.trycloudflare.com/api/ai/concierge', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: input, history: messages.slice(-5) }),
-        signal: ctrl.signal,
-      });
-      clearTimeout(tm);
-      
-      const data = await response.json();
-      if (!response.ok) throw new Error(data?.error || 'AI request failed');
-      
-      setMessages(prev => [...prev, { id: Date.now() + 1, role: 'ai', text: data.text || 'Прости, я отвлекся. Попробуй еще раз?' }]);
-      if (data.listings && data.listings.length > 0) {
-        setListings(data.listings);
-        setActiveTab('catalog');
-      }
-    } catch (e) {
-      console.error('AI Error:', e);
-      setMessages(prev => [...prev, { id: Date.now() + 1, role: 'ai', text: 'Ошибка связи с сервером. Проверь интернет или попробуй позже.' }]);
-    } finally {
+    setTimeout(() => {
+      setMessages((m) => [...m, { id: Date.now() + 1, role: 'ai', text: localAnswer(text) }]);
       setIsLoading(false);
-    }
-  };
-
-  const handleBooking = (listing) => {
-    const WebApp = getWebApp();
-    if (WebApp) {
-      WebApp.showAlert(`Бронирование "${listing.title}" пока в разработке!`);
-    } else {
-      alert(`Бронирование "${listing.title}"!`);
-    }
+    }, 500);
   };
 
   return (
-    <div className="flex flex-col h-screen bg-gray-50 text-gray-900 overflow-hidden font-sans">
-      {/* Header */}
-      <div className="bg-white px-4 py-3 border-b flex items-center justify-between shadow-sm shrink-0">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold">B</div>
-          <h1 className="font-semibold text-lg">BaikalRent</h1>
-        </div>
-        <User size={20} className="text-gray-400" />
+    <div className="flex flex-col h-screen bg-gray-50 text-gray-900">
+      <div className="bg-white px-4 py-3 border-b flex items-center justify-between">
+        <div className="font-semibold text-lg">BaikalRent</div>
+        <User size={18} className="text-gray-500" />
       </div>
 
-      {/* Main Content */}
-      <div className="flex-1 overflow-y-auto pb-32">
+      <div className="flex-1 overflow-y-auto pb-28">
         {activeTab === 'chat' ? (
-          <div className="p-4 space-y-4">
-            {/* Location Cards */}
-            {locations.length > 0 && (
-              <div className="flex gap-3 overflow-x-auto pb-2 -mx-4 px-4 no-scrollbar">
-                {locations.map(loc => (
-                  <div 
-                    key={loc.id} 
-                    onClick={() => setSelectedLocation(loc)}
-                    className="min-w-[140px] bg-white rounded-xl shadow-sm border overflow-hidden shrink-0 active:scale-95 transition-transform"
-                  >
-                    <img src={loc.metadata?.image_url || 'https://via.placeholder.com/150?text=Baikal'} className="w-full h-20 object-cover" alt={loc.name} />
-                    <div className="p-2">
-                      <p className="font-bold text-xs truncate">{loc.name}</p>
-                      <p className="text-[10px] text-gray-400">Узнать больше</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {messages.map(msg => (
-              <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[85%] p-3 rounded-2xl shadow-sm ${
-                  msg.role === 'user' 
-                    ? 'bg-blue-600 text-white rounded-tr-none' 
-                    : 'bg-white text-gray-800 border rounded-tl-none'
-                }`}>
-                  <p className="text-[15px] leading-relaxed">{msg.text}</p>
-                </div>
-              </div>
-            ))}
-            {isLoading && (
-              <div className="flex justify-start pl-2">
-                <div className="bg-white border p-2 rounded-xl shadow-sm animate-pulse text-gray-400 text-xs">Печатаю...</div>
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className="p-4 space-y-4">
-            {/* Category Filter */}
-            <div className="flex gap-2 overflow-x-auto pb-2 -mx-4 px-4 no-scrollbar">
-              {categories.map(cat => (
-                <button
-                  key={cat.id}
-                  onClick={() => setActiveCategory(cat.id)}
-                  className={`flex items-center gap-1 px-3 py-1.5 rounded-full whitespace-nowrap text-sm font-medium transition-colors ${
-                    activeCategory === cat.id ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 border'
-                  }`}
-                >
-                  <span>{cat.icon}</span>
-                  <span>{cat.name}</span>
+          <div className="p-4 space-y-3">
+            <div className="flex gap-3 overflow-x-auto pb-2">
+              {quick.map((loc) => (
+                <button key={loc.name} onClick={() => setSelectedLocation(loc)} className="min-w-[130px] bg-white border rounded-xl overflow-hidden text-left">
+                  <img src={loc.image} className="w-full h-16 object-cover" />
+                  <div className="p-2 text-xs font-semibold truncate">{loc.name}</div>
                 </button>
               ))}
             </div>
 
-            <div className="flex items-center justify-between mb-2">
-              <h2 className="font-bold text-xl text-gray-800">Каталог</h2>
-            </div>
-            
-            {listings.length === 0 ? (
-              <div className="text-center py-12 text-gray-400">
-                <Search size={48} className="mx-auto mb-4 opacity-20" />
-                <p>Начни чат с ИИ-консьержем,<br/>чтобы подобрать варианты</p>
-                <button onClick={() => setActiveTab('chat')} className="mt-4 text-blue-600 font-semibold underline">Перейти в чат</button>
+            {messages.map((msg) => (
+              <div key={msg.id} className={msg.role === 'user' ? 'text-right' : 'text-left'}>
+                <span className={msg.role === 'user' ? 'inline-block bg-blue-600 text-white px-3 py-2 rounded-2xl' : 'inline-block bg-white border px-3 py-2 rounded-2xl'}>{msg.text}</span>
               </div>
-            ) : (
-              listings.map(l => (
-                <div key={l.id} className="bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-100 mb-4 transition-transform active:scale-[0.98]">
-                  <div className="h-48 bg-gray-200 relative">
-                    <img src={l.metadata?.image_url || 'https://via.placeholder.com/400?text=Listing'} alt={l.title} className="w-full h-full object-cover" />
-                  </div>
-                  <div className="p-4">
-                    <h3 className="font-bold text-lg text-gray-800 leading-tight">{l.title}</h3>
-                    <div className="flex items-center text-gray-500 text-sm mt-1 mb-3">
-                      <MapPin size={14} className="mr-1" />
-                      {l.location_id ? 'Байкал' : 'Локация не указана'}
-                    </div>
-                    <div className="flex items-center justify-between pt-3 border-t">
-                      <span className="font-bold text-lg text-blue-600">{l.metadata?.price_label || 'По запросу'}</span>
-                      <button onClick={() => handleBooking(l)} className="bg-blue-600 text-white px-5 py-2.5 rounded-xl font-bold flex items-center gap-2">
-                        Бронировать <ChevronRight size={16} />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ))
-            )}
+            ))}
+            {isLoading && <div className="text-xs text-gray-400">Печатаю...</div>}
+          </div>
+        ) : (
+          <div className="p-4 grid gap-3">
+            {LOCATIONS.map((l) => (
+              <div key={l.name} className="bg-white border rounded-xl p-3">
+                <div className="font-semibold">{l.name}</div>
+                <div className="text-sm text-gray-600">{l.description}</div>
+              </div>
+            ))}
           </div>
         )}
       </div>
 
-      {/* Modal for Location Details */}
       {selectedLocation && (
-        <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-6 backdrop-blur-sm" onClick={() => setSelectedLocation(null)}>
-          <div className="bg-white rounded-3xl overflow-hidden max-w-sm w-full" onClick={e => e.stopPropagation()}>
-            <img src={selectedLocation.metadata?.image_url || 'https://via.placeholder.com/400?text=Location'} className="w-full h-48 object-cover" alt={selectedLocation.name} />
-            <div className="p-6">
-              <h2 className="text-2xl font-bold mb-2">{selectedLocation.name}</h2>
-              <p className="text-gray-600 leading-relaxed mb-6">{selectedLocation.metadata?.description || 'Описание скоро появится...'}</p>
-              <button 
-                onClick={() => {
-                  setInput(`Расскажи подробнее про ${selectedLocation.name}`);
-                  setSelectedLocation(null);
-                }}
-                className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold"
-              >
-                Спросить консьержа
-              </button>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4" onClick={() => setSelectedLocation(null)}>
+          <div className="bg-white rounded-2xl overflow-hidden max-w-sm w-full" onClick={(e) => e.stopPropagation()}>
+            <img src={selectedLocation.image} className="w-full h-40 object-cover" />
+            <div className="p-4">
+              <div className="text-lg font-bold">{selectedLocation.name}</div>
+              <div className="text-sm text-gray-600 mt-2">{selectedLocation.description}</div>
             </div>
           </div>
         </div>
       )}
 
-      {/* Input */}
       {activeTab === 'chat' && (
-        <div className="fixed bottom-16 left-0 right-0 p-4 bg-white border-t z-50">
-          <div className="flex items-center gap-2 bg-gray-100 rounded-2xl p-2 pl-4 border border-gray-200">
-            <input 
-              className="flex-1 bg-transparent border-none outline-none text-gray-800" 
-              placeholder="Спроси помощника..."
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
-            />
-            <button 
-              onClick={sendMessage}
-              className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white active:scale-90 transition-transform"
-            >
-              <Send size={18} />
-            </button>
+        <div className="fixed bottom-14 left-0 right-0 p-3 bg-white border-t">
+          <div className="flex gap-2">
+            <input value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && sendMessage()} placeholder="Например: хочу отдых на Ольхоне 3 дня" className="flex-1 border rounded-xl px-3 py-2" />
+            <button onClick={sendMessage} className="bg-blue-600 text-white px-3 rounded-xl"><Send size={16} /></button>
           </div>
         </div>
       )}
 
-      {/* Bottom Navigation */}
-      <div className="bg-white border-t px-6 py-2 flex items-center justify-between fixed bottom-0 left-0 right-0 z-50">
-        <button onClick={() => setActiveTab('chat')} className={`flex flex-col items-center gap-1 transition-colors ${activeTab === 'chat' ? 'text-blue-600' : 'text-gray-400'}`}>
-          <MessageSquare size={24} />
-          <span className="text-[10px] font-bold uppercase">ИИ-Чат</span>
-        </button>
-        <button onClick={() => setActiveTab('catalog')} className={`flex flex-col items-center gap-1 transition-colors ${activeTab === 'catalog' ? 'text-blue-600' : 'text-gray-400'}`}>
-          <Search size={24} />
-          <span className="text-[10px] font-bold uppercase">Каталог</span>
-        </button>
-        <button className="flex flex-col items-center gap-1 text-gray-400">
-          <Calendar size={24} />
-          <span className="text-[10px] font-bold uppercase">Брони</span>
-        </button>
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t py-2 flex justify-around">
+        <button onClick={() => setActiveTab('chat')} className={activeTab === 'chat' ? 'text-blue-600' : 'text-gray-500'}><MessageSquare size={20} /></button>
+        <button onClick={() => setActiveTab('catalog')} className={activeTab === 'catalog' ? 'text-blue-600' : 'text-gray-500'}><Search size={20} /></button>
+        <button className="text-gray-500"><Calendar size={20} /></button>
       </div>
     </div>
   );
-};
-
-export default BaikalRentApp;
+}

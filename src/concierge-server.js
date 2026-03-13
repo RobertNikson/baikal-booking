@@ -69,6 +69,8 @@ app.post('/api/ai/concierge', async (req, res) => {
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), 15000);
 
+    console.log('Request to AI concierge:', { message, userId });
+    
     const response = await fetch('https://api.deepseek.com/chat/completions', {
       method: 'POST',
       headers: {
