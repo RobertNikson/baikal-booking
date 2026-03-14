@@ -20,6 +20,108 @@ app.use((req, res, next) => {
 });
 app.use(express.static('public'));
 
+function signToken(payload) {
+  const secret = process.env.JWT_SECRET || 'baikal_secret_key_2024';
+  return jwt.sign(payload, secret, { expiresIn: '30d' });
+}
+
+function authenticateToken(req, res, next) {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+  if (!token) return res.sendStatus(401);
+
+  jwt.verify(token, process.env.JWT_SECRET || 'baikal_secret_key_2024', (err, user) => {
+    if (err) return res.sendStatus(403);
+    req.user = user;
+    next();
+  });
+}
+
+// --- Auth Routes ---
+
+app.post('/api/auth/telegram', async (req, res) => {
+  const { initData } = req.body;
+  const botToken = process.env.TELEGRAM_BOT_TOKEN;
+
+  if (!verifyTelegramInitData(initData, botToken)) {
+    return res.status(401).json({ error: 'Invalid initData' });
+  }
+
+  try {
+    const user = await upsertUserFromInitData(initData);
+    const partner = (await query('SELECT * FROM partners WHERE id IN (SELECT partner_id FROM partner_users WHERE user_id = $1)', [user.id])).rows[0];
+    
+    const token = signToken({ 
+      userId: user.id, 
+      telegramId: user.telegram_id,
+      partnerId: partner?.id || null,
+      role: user.role 
+    });
+
+    res.json({ token, user, partner });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// --- Partner Routes ---
+
+app.post('/api/partners/register', authenticateToken, async (req, res) => {
+  const { name, partnerType, phone, email } = req.body;
+  const userId = req.user.userId;
+
+  try {
+    const client = await pool.connect();
+    await client.query('BEGIN');
+    
+    const partner = (await client.query(
+      'INSERT INTO partners (name, partner_type, phone, email, status) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+      [name, partnerType, phone, email, 'active']
+    )).rows[0];
+
+    // Create relation between user and partner
+    await client.query(
+      'INSERT INTO partner_users (partner_id, user_id) VALUES ($1, $2)',
+      [partner.id, userId]
+    );
+
+    await client.query('COMMIT');
+    client.release();
+
+    res.json({ partner });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get('/api/partners/my-listings', authenticateToken, async (req, res) => {
+  if (!req.user.partnerId) return res.status(403).json({ error: 'Not a partner' });
+  
+  try {
+    const rows = (await query('SELECT * FROM listings WHERE partner_id = $1', [req.user.partnerId])).rows;
+    res.json(rows);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/listings', authenticateToken, async (req, res) => {
+  if (!req.user.partnerId) return res.status(403).json({ error: 'Not a partner' });
+  
+  const { title, category, locationId, description, metadata } = req.body;
+  try {
+    const row = (await query(
+      'INSERT INTO listings (partner_id, location_id, category, title, description, metadata, status) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
+      [req.user.partnerId, locationId, category, title, description, metadata, 'active']
+    )).rows[0];
+    res.json(row);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// --- Existing Routes ---
+
 app.get('/api/locations', async (_req, res) => {
   try {
     const rows = (await query(`

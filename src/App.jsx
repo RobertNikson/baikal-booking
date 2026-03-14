@@ -1,5 +1,7 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { MessageSquare, Calendar, Search, Send, User } from 'lucide-react';
+
+const API_BASE = 'https://ones-msg-diana-wyoming.trycloudflare.com/api';
 
 const LOCATIONS = [
   { name: 'Листвянка', image: 'https://images.unsplash.com/photo-1548013146-72479768bbaa?q=80&w=1000', description: 'Ворота Байкала: нерпинарий, музей, набережная, катера.' },
@@ -16,30 +18,47 @@ const LOCATIONS = [
   { name: 'Гранатовый пляж', image: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?q=80&w=1000', description: 'Живописная точка для фотосетов и отдыха у воды.' },
 ];
 
-function localAnswer(text) {
-  const q = text.toLowerCase();
-  const found = LOCATIONS.find((l) => q.includes(l.name.toLowerCase()));
-  if (found) return `📍 ${found.name}: ${found.description}`;
-
-  if (q.includes('прожив')) return '🏠 Проживание: могу предложить Листвянку, Хужир, Малое море и Байкальск под разный бюджет.';
-  if (q.includes('прокат')) return '🚲 Прокат: велосипеды, SUP, катера, авто и снаряжение доступны в Листвянке, Хужире и на Малом море.';
-  if (q.includes('экскурс')) return '🗺️ Экскурсии: пешие, с гидом, водные и авто-туры (в т.ч. Хобой/Ольхон/КБЖД).';
-  if (q.includes('покуш') || q.includes('еда') || q.includes('кафе')) return '🍽️ По еде: в Листвянке и Хужире лучший выбор кафе и локальной кухни.';
-  if (q.includes('пакет') || q.includes('день')) return '🎁 Пакеты: могу собрать маршрут на 1–7 дней по бюджету и активности (лайт/средний/актив).';
-
-  return 'Я помогу подобрать отдых на Байкале: локация, бюджет, активность, проживание/прокат/экскурсии. Напиши критерии 👇';
-}
+const getWebApp = () => {
+  if (typeof window !== 'undefined' && window.Telegram && window.Telegram.WebApp) {
+    return window.Telegram.WebApp;
+  }
+  return null;
+};
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('chat');
   const [selectedLocation, setSelectedLocation] = useState(null);
+  const [user, setUser] = useState(null);
+  const [token, setToken] = useState(localStorage.getItem('baikal_user_token'));
   const [messages, setMessages] = useState([
-    { id: 1, role: 'ai', text: 'Привет! Я офлайн-консьерж BaikalRent. Уже работаю без туннелей и внешнего AI API.' },
+    { id: 1, role: 'ai', text: 'Привет! Я твой ИИ-консьерж BaikalRent. Могу помочь с бронированием жилья, проката и экскурсий.' },
   ]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  const quick = useMemo(() => LOCATIONS.slice(0, 8), []);
+  useEffect(() => {
+    const initAuth = async () => {
+      const WebApp = getWebApp();
+      if (!WebApp || !WebApp.initData) return;
+      WebApp.ready();
+      WebApp.expand();
+
+      try {
+        const res = await fetch(`${API_BASE}/auth/telegram`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ initData: WebApp.initData })
+        });
+        const data = await res.json();
+        if (data.token) {
+          setToken(data.token);
+          localStorage.setItem('baikal_user_token', data.token);
+          setUser(data.user);
+        }
+      } catch (e) { console.error('Auth error:', e); }
+    };
+    initAuth();
+  }, []);
 
   const sendMessage = async () => {
     if (!input.trim()) return;
@@ -47,44 +66,63 @@ export default function App() {
     setMessages((m) => [...m, { id: Date.now(), role: 'user', text }]);
     setInput('');
     setIsLoading(true);
-    setTimeout(() => {
-      setMessages((m) => [...m, { id: Date.now() + 1, role: 'ai', text: localAnswer(text) }]);
+
+    try {
+      const res = await fetch(`${API_BASE}/ai/concierge`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ message: text, history: messages.slice(-5) })
+      });
+      const data = await res.json();
+      setMessages((m) => [...m, { id: Date.now() + 1, role: 'ai', text: data.text || 'Не удалось получить ответ.' }]);
+    } catch (e) {
+      setMessages((m) => [...m, { id: Date.now() + 1, role: 'ai', text: 'Ошибка связи с сервером. Но я все еще помню локации!' }]);
+    } finally {
       setIsLoading(false);
-    }, 500);
+    }
   };
 
   return (
     <div className="flex flex-col h-screen bg-gray-50 text-gray-900">
-      <div className="bg-white px-4 py-3 border-b flex items-center justify-between">
-        <div className="font-semibold text-lg">BaikalRent</div>
-        <User size={18} className="text-gray-500" />
+      <div className="bg-white px-4 py-3 border-b flex items-center justify-between shadow-sm">
+        <div className="font-bold text-xl text-blue-600">BaikalRent</div>
+        <div className="text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded-lg">{user?.full_name || 'Гость'}</div>
       </div>
 
       <div className="flex-1 overflow-y-auto pb-28">
         {activeTab === 'chat' ? (
-          <div className="p-4 space-y-3">
-            <div className="flex gap-3 overflow-x-auto pb-2">
-              {quick.map((loc) => (
-                <button key={loc.name} onClick={() => setSelectedLocation(loc)} className="min-w-[130px] bg-white border rounded-xl overflow-hidden text-left">
-                  <img src={loc.image} className="w-full h-16 object-cover" />
-                  <div className="p-2 text-xs font-semibold truncate">{loc.name}</div>
+          <div className="p-4 space-y-4">
+            <div className="flex gap-3 overflow-x-auto pb-2 no-scrollbar">
+              {LOCATIONS.map((loc) => (
+                <button key={loc.name} onClick={() => setSelectedLocation(loc)} className="min-w-[140px] bg-white border rounded-2xl overflow-hidden text-left shadow-sm active:scale-95 transition-transform">
+                  <img src={loc.image} className="w-full h-20 object-cover" />
+                  <div className="p-2 text-xs font-bold truncate">{loc.name}</div>
                 </button>
               ))}
             </div>
 
             {messages.map((msg) => (
-              <div key={msg.id} className={msg.role === 'user' ? 'text-right' : 'text-left'}>
-                <span className={msg.role === 'user' ? 'inline-block bg-blue-600 text-white px-3 py-2 rounded-2xl' : 'inline-block bg-white border px-3 py-2 rounded-2xl'}>{msg.text}</span>
+              <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                <div className={`max-w-[85%] px-4 py-2 rounded-2xl ${msg.role === 'user' ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-white border shadow-sm rounded-tl-none'}`}>
+                  {msg.text}
+                </div>
               </div>
             ))}
-            {isLoading && <div className="text-xs text-gray-400">Печатаю...</div>}
+            {isLoading && <div className="text-xs text-gray-400 animate-pulse pl-2">Печатаю...</div>}
           </div>
         ) : (
-          <div className="p-4 grid gap-3">
+          <div className="p-4 grid gap-4">
+            <h2 className="text-xl font-bold">Каталог Байкала</h2>
             {LOCATIONS.map((l) => (
-              <div key={l.name} className="bg-white border rounded-xl p-3">
-                <div className="font-semibold">{l.name}</div>
-                <div className="text-sm text-gray-600">{l.description}</div>
+              <div key={l.name} className="bg-white border rounded-2xl p-4 shadow-sm flex gap-4" onClick={() => setSelectedLocation(l)}>
+                <img src={l.image} className="w-20 h-20 rounded-xl object-cover" />
+                <div className="flex-1">
+                  <div className="font-bold">{l.name}</div>
+                  <div className="text-xs text-gray-500 line-clamp-2 mt-1">{l.description}</div>
+                </div>
               </div>
             ))}
           </div>
@@ -92,30 +130,40 @@ export default function App() {
       </div>
 
       {selectedLocation && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4" onClick={() => setSelectedLocation(null)}>
-          <div className="bg-white rounded-2xl overflow-hidden max-w-sm w-full" onClick={(e) => e.stopPropagation()}>
-            <img src={selectedLocation.image} className="w-full h-40 object-cover" />
-            <div className="p-4">
-              <div className="text-lg font-bold">{selectedLocation.name}</div>
-              <div className="text-sm text-gray-600 mt-2">{selectedLocation.description}</div>
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-6 z-[100]" onClick={() => setSelectedLocation(null)}>
+          <div className="bg-white rounded-3xl overflow-hidden max-w-sm w-full animate-in zoom-in duration-200" onClick={(e) => e.stopPropagation()}>
+            <img src={selectedLocation.image} className="w-full h-48 object-cover" />
+            <div className="p-6">
+              <div className="text-2xl font-bold">{selectedLocation.name}</div>
+              <div className="text-gray-600 mt-3 leading-relaxed">{selectedLocation.description}</div>
+              <button onClick={() => { setInput(`Расскажи подробнее про ${selectedLocation.name}`); setSelectedLocation(null); setActiveTab('chat'); }} className="w-full bg-blue-600 text-white py-4 rounded-2xl font-bold mt-6">Спросить ИИ</button>
             </div>
           </div>
         </div>
       )}
 
       {activeTab === 'chat' && (
-        <div className="fixed bottom-14 left-0 right-0 p-3 bg-white border-t">
-          <div className="flex gap-2">
-            <input value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && sendMessage()} placeholder="Например: хочу отдых на Ольхоне 3 дня" className="flex-1 border rounded-xl px-3 py-2" />
-            <button onClick={sendMessage} className="bg-blue-600 text-white px-3 rounded-xl"><Send size={16} /></button>
+        <div className="fixed bottom-16 left-0 right-0 p-4 bg-white/80 backdrop-blur-md border-t z-50">
+          <div className="flex gap-2 bg-gray-100 p-2 rounded-2xl border">
+            <input value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && sendMessage()} placeholder="Например: жилье на Ольхоне" className="flex-1 bg-transparent px-3 py-2 outline-none" />
+            <button onClick={sendMessage} className="bg-blue-600 text-white p-3 rounded-xl shadow-lg active:scale-90 transition-transform"><Send size={18} /></button>
           </div>
         </div>
       )}
 
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t py-2 flex justify-around">
-        <button onClick={() => setActiveTab('chat')} className={activeTab === 'chat' ? 'text-blue-600' : 'text-gray-500'}><MessageSquare size={20} /></button>
-        <button onClick={() => setActiveTab('catalog')} className={activeTab === 'catalog' ? 'text-blue-600' : 'text-gray-500'}><Search size={20} /></button>
-        <button className="text-gray-500"><Calendar size={20} /></button>
+      <div className="fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-md border-t py-3 flex justify-around z-50">
+        <button onClick={() => setActiveTab('chat')} className={`flex flex-col items-center gap-1 ${activeTab === 'chat' ? 'text-blue-600' : 'text-gray-400'}`}>
+          <MessageSquare size={24} />
+          <span className="text-[10px] font-bold uppercase">Чат</span>
+        </button>
+        <button onClick={() => setActiveTab('catalog')} className={`flex flex-col items-center gap-1 ${activeTab === 'catalog' ? 'text-blue-600' : 'text-gray-400'}`}>
+          <Search size={24} />
+          <span className="text-[10px] font-bold uppercase">Каталог</span>
+        </button>
+        <button className="flex flex-col items-center gap-1 text-gray-400">
+          <Calendar size={24} />
+          <span className="text-[10px] font-bold uppercase">Брони</span>
+        </button>
       </div>
     </div>
   );
