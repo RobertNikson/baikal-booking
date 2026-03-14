@@ -8,7 +8,7 @@ const getWebApp = () => {
   return null;
 };
 
-const API_BASE = 'https://jobs-direction-epa-elections.trycloudflare.com/api';
+const API_BASE = 'https://tribe-postcard-hindu-talk.trycloudflare.com/api';
 
 const PartnerDashboard = () => {
   const [user, setUser] = useState(null);
