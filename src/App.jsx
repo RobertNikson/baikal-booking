@@ -104,7 +104,7 @@ export default function App() {
       ></div>
 
       <div className="bg-white/80 backdrop-blur-md px-5 py-4 border-b flex items-center justify-between shadow-sm shrink-0 z-10">
-        <div className="font-extrabold text-2xl tracking-tighter text-blue-600">BaikalRent</div>
+        <div className="font-extrabold text-2xl tracking-tighter text-blue-600">BaikalRent <span className="text-[10px] font-normal opacity-30">v1.2.0</span></div>
         <div className="flex items-center gap-2">
           <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest bg-gray-50 px-2 py-1 rounded-lg border">{user?.full_name || 'Гость'}</span>
         </div>
