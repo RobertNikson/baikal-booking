@@ -4,9 +4,9 @@ import { resolve } from 'path';
 
 export default defineConfig({
   plugins: [react()],
-  base: '/baikal-booking/',
+  base: './', // Use relative paths for everything
   build: {
-    target: 'es2018',
+    target: 'esnext',
     outDir: 'docs',
     emptyOutDir: true,
     assetsDir: 'assets',
