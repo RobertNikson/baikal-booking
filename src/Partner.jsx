@@ -8,12 +8,12 @@ const getWebApp = () => {
   return null;
 };
 
-const API_BASE = 'https://ones-msg-diana-wyoming.trycloudflare.com/api'; // Using current active tunnel
+const API_BASE = 'https://jobs-direction-epa-elections.trycloudflare.com/api';
 
 const PartnerDashboard = () => {
   const [user, setUser] = useState(null);
   const [partner, setPartner] = useState(null);
-  const [token, setToken] = useState(localStorage.getItem('baikal_token'));
+  const [token, setToken] = useState(localStorage.getItem('baikal_partner_token'));
   const [listings, setListings] = useState([]);
   const [locations, setLocations] = useState([]);
   const [isEditing, setIsEditing] = useState(false);
@@ -28,6 +28,8 @@ const PartnerDashboard = () => {
         setIsLoading(false);
         return;
       }
+      WebApp.ready();
+      WebApp.expand();
 
       try {
         const res = await fetch(`${API_BASE}/auth/telegram`, {
@@ -38,7 +40,7 @@ const PartnerDashboard = () => {
         const data = await res.json();
         if (data.token) {
           setToken(data.token);
-          localStorage.setItem('baikal_token', data.token);
+          localStorage.setItem('baikal_partner_token', data.token);
           setUser(data.user);
           setPartner(data.partner);
           if (!data.partner) setShowRegister(true);
@@ -98,6 +100,7 @@ const PartnerDashboard = () => {
         setShowRegister(false);
         const WebApp = getWebApp();
         if (WebApp) WebApp.showAlert('Поздравляем! Вы зарегистрированы как партнер.');
+        fetchPartnerData();
       }
     } catch (e) { alert('Ошибка регистрации'); }
   };
@@ -116,8 +119,12 @@ const PartnerDashboard = () => {
       }
     };
 
+    const url = currentListing?.id 
+      ? `${API_BASE}/listings/${currentListing.id}` 
+      : `${API_BASE}/listings`;
+
     try {
-      const res = await fetch(`${API_BASE}/listings`, {
+      const res = await fetch(url, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
@@ -130,79 +137,178 @@ const PartnerDashboard = () => {
         setIsEditing(false);
         fetchPartnerData();
         const WebApp = getWebApp();
-        if (WebApp) WebApp.showAlert('Карточка успешно добавлена!');
+        if (WebApp) WebApp.showAlert(currentListing?.id ? 'Изменения сохранены!' : 'Карточка добавлена!');
       }
     } catch (e) { alert('Ошибка сохранения'); }
   };
 
-  if (isLoading) return <div className="p-10 text-center text-gray-400">Авторизация...</div>;
+  const handleDeleteListing = async (id) => {
+    const WebApp = getWebApp();
+    const confirmDelete = () => {
+      fetch(`${API_BASE}/listings/${id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      }).then(() => {
+        fetchPartnerData();
+        if (WebApp) WebApp.showAlert('Удалено');
+      });
+    };
+
+    if (WebApp) {
+      WebApp.showConfirm('Удалить это предложение?', (ok) => {
+        if (ok) confirmDelete();
+      });
+    } else {
+      if (window.confirm('Удалить?')) confirmDelete();
+    }
+  };
+
+  if (isLoading) return (
+    <div className="flex items-center justify-center min-h-screen bg-gray-50">
+      <div className="text-gray-400 animate-pulse font-medium">Авторизация в BaikalRent...</div>
+    </div>
+  );
 
   if (showRegister) {
     return (
-      <div className="p-6 bg-white min-h-screen">
-        <h1 className="text-2xl font-bold mb-6">Регистрация партнёра</h1>
+      <div className="p-6 bg-white min-h-screen font-sans">
+        <div className="mb-8 text-center">
+          <div className="w-16 h-16 bg-blue-600 rounded-2xl mx-auto mb-4 flex items-center justify-center text-white text-3xl font-bold shadow-xl shadow-blue-100">B</div>
+          <h1 className="text-2xl font-bold text-gray-800">Стать партнером</h1>
+          <p className="text-gray-400 text-sm mt-1">Начните принимать бронирования сегодня</p>
+        </div>
         <form onSubmit={handleRegister} className="space-y-4">
-          <input name="name" placeholder="Название компании / Имя" className="w-full border p-3 rounded-xl" required />
-          <select name="type" className="w-full border p-3 rounded-xl">
-            <option value="self_employed">Самозанятый</option>
-            <option value="ip">ИП</option>
-            <option value="ooo">ООО</option>
-          </select>
-          <input name="phone" placeholder="Телефон" className="w-full border p-3 rounded-xl" required />
-          <input name="email" placeholder="Email (необязательно)" className="w-full border p-3 rounded-xl" />
-          <button type="submit" className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold">Зарегистрироваться</button>
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-gray-400 uppercase ml-1">Название бизнеса</label>
+            <input name="name" placeholder="Напр: Гостевой дом 'У Шаманки'" className="w-full border-gray-100 border-2 p-4 rounded-2xl focus:border-blue-600 outline-none transition-colors" required />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-gray-400 uppercase ml-1">Тип организации</label>
+            <select name="type" className="w-full border-gray-100 border-2 p-4 rounded-2xl focus:border-blue-600 outline-none transition-colors appearance-none bg-white">
+              <option value="self_employed">Самозанятый</option>
+              <option value="ip">ИП</option>
+              <option value="ooo">ООО</option>
+            </select>
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-gray-400 uppercase ml-1">Телефон для связи</label>
+            <input name="phone" placeholder="+7 (999) 000-00-00" className="w-full border-gray-100 border-2 p-4 rounded-2xl focus:border-blue-600 outline-none transition-colors" required />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-gray-400 uppercase ml-1">Контактный Email</label>
+            <input name="email" type="email" placeholder="example@mail.ru" className="w-full border-gray-100 border-2 p-4 rounded-2xl focus:border-blue-600 outline-none transition-colors" />
+          </div>
+          <button type="submit" className="w-full bg-blue-600 text-white py-5 rounded-2xl font-bold shadow-lg shadow-blue-200 mt-4 active:scale-95 transition-transform">
+            Создать кабинет
+          </button>
         </form>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-20">
-      <div className="bg-white p-4 border-b flex justify-between items-center sticky top-0 z-10">
+    <div className="min-h-screen bg-gray-50 pb-24 font-sans">
+      <div className="bg-white p-5 border-b flex justify-between items-center sticky top-0 z-10 shadow-sm">
         <div>
-          <h1 className="font-bold text-xl">Кабинет: {partner?.name}</h1>
-          <p className="text-xs text-gray-400">ID: {partner?.id?.slice(0,8)}</p>
+          <h1 className="font-bold text-xl text-gray-800">{partner?.name}</h1>
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+            <p className="text-xs text-gray-400 font-medium uppercase tracking-wider">Активный партнер</p>
+          </div>
         </div>
-        <button onClick={() => { setCurrentListing({}); setIsEditing(true); }} className="bg-blue-600 text-white w-10 h-10 rounded-full flex items-center justify-center shadow-lg">+</button>
+        <button 
+          onClick={() => { setCurrentListing({}); setIsEditing(true); }} 
+          className="bg-blue-600 text-white w-12 h-12 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-100 active:scale-90 transition-transform text-2xl font-bold"
+        >
+          +
+        </button>
       </div>
 
-      <div className="p-4 space-y-4">
+      <div className="p-5 space-y-4">
+        <h2 className="text-sm font-bold text-gray-400 uppercase tracking-widest ml-1">Мои предложения</h2>
         {listings.map(l => (
-          <div key={l.id} className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 flex gap-4">
-            <img src={l.metadata?.image_url || 'https://via.placeholder.com/80'} className="w-20 h-20 rounded-xl object-cover" />
-            <div className="flex-1">
-              <h3 className="font-bold text-gray-800">{l.title}</h3>
-              <p className="text-sm text-gray-500">{l.category}</p>
-              <p className="font-bold text-blue-600 mt-1">{l.metadata?.price_label || '0 ₽'}</p>
+          <div key={l.id} className="bg-white rounded-3xl p-4 shadow-sm border border-gray-50 flex gap-4 animate-in fade-in slide-in-from-bottom-2">
+            <img src={l.metadata?.image_url || 'https://via.placeholder.com/150'} className="w-20 h-20 rounded-2xl object-cover bg-gray-50" alt="" />
+            <div className="flex-1 min-w-0">
+              <h3 className="font-bold text-gray-800 truncate">{l.title}</h3>
+              <p className="text-xs text-gray-400 mt-0.5">{l.category}</p>
+              <div className="flex items-center justify-between mt-3">
+                <p className="font-bold text-blue-600">{l.metadata?.price_label || 'Цена не указана'}</p>
+                <div className="flex gap-2">
+                  <button 
+                    onClick={() => { setCurrentListing(l); setIsEditing(true); }}
+                    className="bg-gray-50 text-gray-400 px-3 py-1.5 rounded-lg text-xs font-bold"
+                  >
+                    Изм.
+                  </button>
+                  <button 
+                    onClick={() => handleDeleteListing(l.id)}
+                    className="bg-red-50 text-red-400 px-3 py-1.5 rounded-lg text-xs font-bold"
+                  >
+                    Удал.
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         ))}
-        {listings.length === 0 && <p className="text-center text-gray-400 py-10">У вас пока нет активных предложений.</p>}
+        {listings.length === 0 && (
+          <div className="text-center py-20 bg-white rounded-3xl border-2 border-dashed border-gray-100">
+            <p className="text-gray-300 font-medium">Здесь пока пусто.<br/>Добавьте свою первую услугу!</p>
+          </div>
+        )}
       </div>
 
       {isEditing && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
-          <div className="bg-white w-full rounded-t-3xl p-6 max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-xl font-bold">Новое предложение</h2>
-              <button onClick={() => setIsEditing(false)} className="text-gray-400">Закрыть</button>
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end">
+          <div className="bg-white w-full rounded-t-[40px] p-8 max-h-[92vh] overflow-y-auto shadow-2xl">
+            <div className="flex justify-between items-center mb-8">
+              <h2 className="text-2xl font-bold text-gray-800">{currentListing?.id ? 'Редактирование' : 'Новое предложение'}</h2>
+              <button onClick={() => setIsEditing(false)} className="bg-gray-100 p-2 rounded-full w-10 h-10 flex items-center justify-center font-bold text-gray-400">×</button>
             </div>
-            <form onSubmit={handleSaveListing} className="space-y-4">
-              <input name="title" placeholder="Название" className="w-full border p-3 rounded-xl" required />
-              <select name="category" className="w-full border p-3 rounded-xl">
-                <option value="stay">Проживание</option>
-                <option value="rental">Прокат</option>
-                <option value="food">Покушать</option>
-                <option value="excursion">Экскурсия</option>
-                <option value="poi">Интересное</option>
-              </select>
-              <select name="locationId" className="w-full border p-3 rounded-xl">
-                {locations.map(loc => <option key={loc.id} value={loc.id}>{loc.name}</option>)}
-              </select>
-              <input name="price" placeholder="Цена (напр: 5000 руб/сут)" className="w-full border p-3 rounded-xl" />
-              <textarea name="description" placeholder="Описание" className="w-full border p-3 rounded-xl" rows="3"></textarea>
-              <input name="image_url" placeholder="Ссылка на фото (URL)" className="w-full border p-3 rounded-xl" />
-              <button type="submit" className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold">Опубликовать</button>
+            <form onSubmit={handleSaveListing} className="space-y-5 pb-6">
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Название услуги/товара</label>
+                <input name="title" defaultValue={currentListing?.title} placeholder="Напр: Прокат байдарок" className="w-full bg-gray-50 border-transparent border-2 p-4 rounded-2xl focus:border-blue-600 focus:bg-white outline-none transition-all" required />
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Категория</label>
+                  <select name="category" defaultValue={currentListing?.category || 'stay'} className="w-full bg-gray-50 border-transparent border-2 p-4 rounded-2xl focus:border-blue-600 focus:bg-white outline-none transition-all appearance-none">
+                    <option value="stay">🏠 Жилье</option>
+                    <option value="rental">🚲 Прокат</option>
+                    <option value="food">🍽️ Еда</option>
+                    <option value="excursion">🗺️ Экскурсия</option>
+                    <option value="poi">🏛️ Интересное</option>
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Локация</label>
+                  <select name="locationId" defaultValue={currentListing?.location_id} className="w-full bg-gray-50 border-transparent border-2 p-4 rounded-2xl focus:border-blue-600 focus:bg-white outline-none transition-all appearance-none">
+                    {locations.map(loc => <option key={loc.id} value={loc.id}>{loc.name}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Стоимость</label>
+                <input name="price" defaultValue={currentListing?.metadata?.price_label} placeholder="Напр: 1500 ₽ / час" className="w-full bg-gray-50 border-transparent border-2 p-4 rounded-2xl focus:border-blue-600 focus:bg-white outline-none transition-all" />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Описание</label>
+                <textarea name="description" defaultValue={currentListing?.description} placeholder="Опишите ваше предложение подробно..." className="w-full bg-gray-50 border-transparent border-2 p-4 rounded-2xl focus:border-blue-600 focus:bg-white outline-none transition-all" rows="4"></textarea>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">URL Фотографии</label>
+                <input name="image_url" defaultValue={currentListing?.metadata?.image_url} placeholder="https://ссылка-на-фото.jpg" className="w-full bg-gray-50 border-transparent border-2 p-4 rounded-2xl focus:border-blue-600 focus:bg-white outline-none transition-all" />
+              </div>
+
+              <button type="submit" className="w-full bg-blue-600 text-white py-5 rounded-2xl font-bold shadow-xl shadow-blue-100 mt-4 active:scale-95 transition-transform">
+                {currentListing?.id ? 'Сохранить изменения' : 'Опубликовать'}
+              </button>
             </form>
           </div>
         </div>

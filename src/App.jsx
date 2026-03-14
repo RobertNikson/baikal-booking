@@ -1,22 +1,7 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { MessageSquare, Calendar, Search, Send, User } from 'lucide-react';
+import { MessageSquare, Calendar, Search, Send, User, MapPin, ChevronRight } from 'lucide-react';
 
-const API_BASE = 'https://ones-msg-diana-wyoming.trycloudflare.com/api';
-
-const LOCATIONS = [
-  { name: 'Листвянка', image: 'https://images.unsplash.com/photo-1548013146-72479768bbaa?q=80&w=1000', description: 'Ворота Байкала: нерпинарий, музей, набережная, катера.' },
-  { name: 'Большие Коты', image: 'https://images.unsplash.com/photo-1472396961693-142e6e269027?q=80&w=1000', description: 'Тихий поселок для треккинга и спокойного отдыха.' },
-  { name: 'Порт Байкал', image: 'https://images.unsplash.com/photo-1506197603052-3cc9c3a201bd?q=80&w=1000', description: 'Историческая точка КБЖД, прогулки и виды на озеро.' },
-  { name: 'Большое Голоустное', image: 'https://images.unsplash.com/photo-1469474968028-56623f02e42e?q=80&w=1000', description: 'Пляжи, смотровые точки и выезды на природу.' },
-  { name: 'Остров Ольхон', image: 'https://images.unsplash.com/photo-1590505299054-938833919967?q=80&w=1000', description: 'Место силы: Шаманка, степи, закаты и туры на мыс Хобой.' },
-  { name: 'Малое море', image: 'https://images.unsplash.com/photo-1518156677180-95a2893f3e9f?q=80&w=1000', description: 'Бухты и базы отдыха, удобный формат для семей.' },
-  { name: 'Хужир', image: 'https://images.unsplash.com/photo-1501785888041-af3ef285b470?q=80&w=1000', description: 'Главная точка Ольхона: кафе, экскурсии, прокат.' },
-  { name: 'Байкальск', image: 'https://images.unsplash.com/photo-1482192505345-5655af888cc4?q=80&w=1000', description: 'Южное побережье, горнолыжка и активный отдых.' },
-  { name: 'Бухта Песчаная', image: 'https://images.unsplash.com/photo-1439066615861-d1af74d74000?q=80&w=1000', description: 'Одна из самых красивых бухт, пляжный формат отдыха.' },
-  { name: 'Бухта Зуун Хагуун', image: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?q=80&w=1000', description: 'Удаленная бухта для приватного и спокойного отдыха.' },
-  { name: 'Сарайский пляж', image: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?q=80&w=1000', description: 'Длинный песчаный пляж рядом с Хужиром.' },
-  { name: 'Гранатовый пляж', image: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?q=80&w=1000', description: 'Живописная точка для фотосетов и отдыха у воды.' },
-];
+const API_BASE = 'https://jobs-direction-epa-elections.trycloudflare.com/api';
 
 const getWebApp = () => {
   if (typeof window !== 'undefined' && window.Telegram && window.Telegram.WebApp) {
@@ -34,6 +19,8 @@ export default function App() {
     { id: 1, role: 'ai', text: 'Привет! Я твой ИИ-консьерж BaikalRent. Могу помочь с бронированием жилья, проката и экскурсий.' },
   ]);
   const [input, setInput] = useState('');
+  const [listings, setListings] = useState([]);
+  const [locations, setLocations] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
@@ -57,7 +44,17 @@ export default function App() {
         }
       } catch (e) { console.error('Auth error:', e); }
     };
+
+    const fetchLocations = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/locations`);
+        const data = await res.json();
+        setLocations(data);
+      } catch (e) { console.error(e); }
+    };
+
     initAuth();
+    fetchLocations();
   }, []);
 
   const sendMessage = async () => {
@@ -78,91 +75,133 @@ export default function App() {
       });
       const data = await res.json();
       setMessages((m) => [...m, { id: Date.now() + 1, role: 'ai', text: data.text || 'Не удалось получить ответ.' }]);
+      if (data.listings && data.listings.length > 0) {
+        setListings(data.listings);
+        setActiveTab('catalog');
+      }
     } catch (e) {
-      setMessages((m) => [...m, { id: Date.now() + 1, role: 'ai', text: 'Ошибка связи с сервером. Но я все еще помню локации!' }]);
+      setMessages((m) => [...m, { id: Date.now() + 1, role: 'ai', text: 'Ошибка связи с сервером. Попробуй позже!' }]);
     } finally {
       setIsLoading(false);
     }
   };
 
+  const handleBooking = (listing) => {
+    const WebApp = getWebApp();
+    if (WebApp) {
+      WebApp.showConfirm(`Вы хотите забронировать "${listing.title}"?`, (ok) => {
+        if (ok) WebApp.showAlert('Заявка отправлена партнеру! С вами свяжутся.');
+      });
+    }
+  };
+
   return (
-    <div className="flex flex-col h-screen bg-gray-50 text-gray-900">
-      <div className="bg-white px-4 py-3 border-b flex items-center justify-between shadow-sm">
-        <div className="font-bold text-xl text-blue-600">BaikalRent</div>
-        <div className="text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded-lg">{user?.full_name || 'Гость'}</div>
+    <div className="flex flex-col h-screen bg-gray-50 text-gray-900 font-sans overflow-hidden">
+      <div className="bg-white px-5 py-4 border-b flex items-center justify-between shadow-sm shrink-0">
+        <div className="font-extrabold text-2xl tracking-tighter text-blue-600">BaikalRent</div>
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest bg-gray-50 px-2 py-1 rounded-lg border">{user?.full_name || 'Гость'}</span>
+        </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto pb-28">
+      <div className="flex-1 overflow-y-auto pb-32">
         {activeTab === 'chat' ? (
-          <div className="p-4 space-y-4">
-            <div className="flex gap-3 overflow-x-auto pb-2 no-scrollbar">
-              {LOCATIONS.map((loc) => (
-                <button key={loc.name} onClick={() => setSelectedLocation(loc)} className="min-w-[140px] bg-white border rounded-2xl overflow-hidden text-left shadow-sm active:scale-95 transition-transform">
-                  <img src={loc.image} className="w-full h-20 object-cover" />
-                  <div className="p-2 text-xs font-bold truncate">{loc.name}</div>
+          <div className="p-5 space-y-5">
+            <div className="flex gap-3 overflow-x-auto pb-2 no-scrollbar -mx-5 px-5">
+              {locations.map((loc) => (
+                <button key={loc.id} onClick={() => setSelectedLocation(loc)} className="min-w-[150px] bg-white border border-gray-100 rounded-[24px] overflow-hidden text-left shadow-sm active:scale-95 transition-all">
+                  <img src={loc.metadata?.image_url || 'https://via.placeholder.com/150'} className="w-full h-24 object-cover" alt="" />
+                  <div className="p-3">
+                    <div className="font-bold text-xs truncate text-gray-800">{loc.name}</div>
+                    <div className="text-[9px] text-gray-400 font-bold uppercase mt-1">О локации</div>
+                  </div>
                 </button>
               ))}
             </div>
 
             {messages.map((msg) => (
-              <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[85%] px-4 py-2 rounded-2xl ${msg.role === 'user' ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-white border shadow-sm rounded-tl-none'}`}>
+              <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-1`}>
+                <div className={`max-w-[85%] px-5 py-3 rounded-[24px] shadow-sm text-[15px] leading-relaxed ${
+                  msg.role === 'user' 
+                    ? 'bg-blue-600 text-white rounded-tr-none font-medium' 
+                    : 'bg-white border border-gray-100 text-gray-800 rounded-tl-none'
+                }`}>
                   {msg.text}
                 </div>
               </div>
             ))}
-            {isLoading && <div className="text-xs text-gray-400 animate-pulse pl-2">Печатаю...</div>}
+            {isLoading && <div className="text-[10px] font-bold text-gray-300 uppercase tracking-widest pl-2 animate-pulse">Помощник думает...</div>}
           </div>
         ) : (
-          <div className="p-4 grid gap-4">
-            <h2 className="text-xl font-bold">Каталог Байкала</h2>
-            {LOCATIONS.map((l) => (
-              <div key={l.name} className="bg-white border rounded-2xl p-4 shadow-sm flex gap-4" onClick={() => setSelectedLocation(l)}>
-                <img src={l.image} className="w-20 h-20 rounded-xl object-cover" />
-                <div className="flex-1">
-                  <div className="font-bold">{l.name}</div>
-                  <div className="text-xs text-gray-500 line-clamp-2 mt-1">{l.description}</div>
+          <div className="p-5 space-y-5">
+            <h2 className="text-2xl font-bold text-gray-800">Каталог Байкала</h2>
+            {listings.map((l) => (
+              <div key={l.id} className="bg-white border border-gray-50 rounded-[32px] p-5 shadow-sm flex flex-col gap-4 animate-in fade-in zoom-in-95 duration-200">
+                <img src={l.metadata?.image_url || 'https://via.placeholder.com/400'} className="w-full h-48 rounded-[24px] object-cover shadow-inner" alt="" />
+                <div>
+                  <div className="flex justify-between items-start">
+                    <div className="font-bold text-lg text-gray-800 leading-tight">{l.title}</div>
+                    <div className="bg-blue-50 text-blue-600 text-[10px] font-bold px-2 py-1 rounded-lg uppercase tracking-wider">{l.category}</div>
+                  </div>
+                  <p className="text-sm text-gray-500 mt-2 line-clamp-2 leading-relaxed">{l.description}</p>
+                  <div className="flex items-center justify-between mt-5 pt-4 border-t border-gray-50">
+                    <div className="font-extrabold text-xl text-blue-600">{l.metadata?.price_label || 'Цена по запросу'}</div>
+                    <button onClick={() => handleBooking(l)} className="bg-blue-600 text-white px-6 py-3 rounded-2xl font-bold shadow-lg shadow-blue-100 active:scale-95 transition-transform flex items-center gap-2">
+                      Забронировать <ChevronRight size={16} />
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}
+            {listings.length === 0 && (
+              <div className="text-center py-20 text-gray-300">
+                <Search size={48} className="mx-auto mb-4 opacity-20" />
+                <p className="font-medium">Напишите ИИ-помощнику,<br/>чтобы он подобрал варианты под ваш запрос.</p>
+              </div>
+            )}
           </div>
         )}
       </div>
 
       {selectedLocation && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-6 z-[100]" onClick={() => setSelectedLocation(null)}>
-          <div className="bg-white rounded-3xl overflow-hidden max-w-sm w-full animate-in zoom-in duration-200" onClick={(e) => e.stopPropagation()}>
-            <img src={selectedLocation.image} className="w-full h-48 object-cover" />
-            <div className="p-6">
-              <div className="text-2xl font-bold">{selectedLocation.name}</div>
-              <div className="text-gray-600 mt-3 leading-relaxed">{selectedLocation.description}</div>
-              <button onClick={() => { setInput(`Расскажи подробнее про ${selectedLocation.name}`); setSelectedLocation(null); setActiveTab('chat'); }} className="w-full bg-blue-600 text-white py-4 rounded-2xl font-bold mt-6">Спросить ИИ</button>
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-md flex items-center justify-center p-6 z-[100] animate-in fade-in duration-300" onClick={() => setSelectedLocation(null)}>
+          <div className="bg-white rounded-[40px] overflow-hidden max-w-sm w-full shadow-2xl animate-in zoom-in duration-300" onClick={(e) => e.stopPropagation()}>
+            <img src={selectedLocation.metadata?.image_url || 'https://via.placeholder.com/400'} className="w-full h-56 object-cover" alt="" />
+            <div className="p-8">
+              <h2 className="text-3xl font-extrabold text-gray-800 tracking-tight">{selectedLocation.name}</h2>
+              <p className="text-gray-500 mt-4 leading-relaxed text-[15px]">{selectedLocation.metadata?.description || 'Место, которое стоит посетить. Подробности появятся совсем скоро.'}</p>
+              <button 
+                onClick={() => { setInput(`Расскажи про ${selectedLocation.name}`); setSelectedLocation(null); setActiveTab('chat'); }} 
+                className="w-full bg-blue-600 text-white py-5 rounded-2xl font-bold mt-8 shadow-xl shadow-blue-100 active:scale-95 transition-all"
+              >
+                Спросить консьержа
+              </button>
             </div>
           </div>
         </div>
       )}
 
       {activeTab === 'chat' && (
-        <div className="fixed bottom-16 left-0 right-0 p-4 bg-white/80 backdrop-blur-md border-t z-50">
-          <div className="flex gap-2 bg-gray-100 p-2 rounded-2xl border">
-            <input value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && sendMessage()} placeholder="Например: жилье на Ольхоне" className="flex-1 bg-transparent px-3 py-2 outline-none" />
-            <button onClick={sendMessage} className="bg-blue-600 text-white p-3 rounded-xl shadow-lg active:scale-90 transition-transform"><Send size={18} /></button>
+        <div className="fixed bottom-16 left-0 right-0 p-5 bg-white/80 backdrop-blur-xl border-t z-50">
+          <div className="flex gap-2 bg-white border border-gray-100 p-2 rounded-[24px] shadow-sm">
+            <input value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && sendMessage()} placeholder="Напр: жилье на Ольхоне" className="flex-1 bg-transparent px-4 py-3 outline-none text-[15px]" />
+            <button onClick={sendMessage} className="bg-blue-600 text-white p-4 rounded-[20px] shadow-lg active:scale-90 transition-transform"><Send size={20} /></button>
           </div>
         </div>
       )}
 
-      <div className="fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-md border-t py-3 flex justify-around z-50">
-        <button onClick={() => setActiveTab('chat')} className={`flex flex-col items-center gap-1 ${activeTab === 'chat' ? 'text-blue-600' : 'text-gray-400'}`}>
-          <MessageSquare size={24} />
-          <span className="text-[10px] font-bold uppercase">Чат</span>
+      <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t py-4 flex justify-around z-50 shadow-2xl">
+        <button onClick={() => setActiveTab('chat')} className={`flex flex-col items-center gap-1.5 transition-all ${activeTab === 'chat' ? 'text-blue-600 scale-110' : 'text-gray-300 hover:text-gray-400'}`}>
+          <MessageSquare size={26} strokeWidth={2.5} />
+          <span className="text-[9px] font-black uppercase tracking-widest">ИИ-Чат</span>
         </button>
-        <button onClick={() => setActiveTab('catalog')} className={`flex flex-col items-center gap-1 ${activeTab === 'catalog' ? 'text-blue-600' : 'text-gray-400'}`}>
-          <Search size={24} />
-          <span className="text-[10px] font-bold uppercase">Каталог</span>
+        <button onClick={() => setActiveTab('catalog')} className={`flex flex-col items-center gap-1.5 transition-all ${activeTab === 'catalog' ? 'text-blue-600 scale-110' : 'text-gray-300 hover:text-gray-400'}`}>
+          <Search size={26} strokeWidth={2.5} />
+          <span className="text-[9px] font-black uppercase tracking-widest">Каталог</span>
         </button>
-        <button className="flex flex-col items-center gap-1 text-gray-400">
-          <Calendar size={24} />
-          <span className="text-[10px] font-bold uppercase">Брони</span>
+        <button className="flex flex-col items-center gap-1.5 text-gray-200">
+          <Calendar size={26} strokeWidth={2.5} />
+          <span className="text-[9px] font-black uppercase tracking-widest opacity-50">Брони</span>
         </button>
       </div>
     </div>

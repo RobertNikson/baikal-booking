@@ -98,7 +98,7 @@ app.get('/api/partners/my-listings', authenticateToken, async (req, res) => {
   if (!req.user.partnerId) return res.status(403).json({ error: 'Not a partner' });
   
   try {
-    const rows = (await query('SELECT * FROM listings WHERE partner_id = $1', [req.user.partnerId])).rows;
+    const rows = (await query('SELECT * FROM listings WHERE partner_id = $1 ORDER BY created_at DESC', [req.user.partnerId])).rows;
     res.json(rows);
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -115,6 +115,34 @@ app.post('/api/listings', authenticateToken, async (req, res) => {
       [req.user.partnerId, locationId, category, title, description, metadata, 'active']
     )).rows[0];
     res.json(row);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/listings/:id', authenticateToken, async (req, res) => {
+  if (!req.user.partnerId) return res.status(403).json({ error: 'Not a partner' });
+  
+  const { id } = req.params;
+  const { title, category, locationId, description, metadata } = req.body;
+  try {
+    const row = (await query(
+      'UPDATE listings SET title=$1, category=$2, location_id=$3, description=$4, metadata=$5 WHERE id=$6 AND partner_id=$7 RETURNING *',
+      [title, category, locationId, description, metadata, id, req.user.partnerId]
+    )).rows[0];
+    if (!row) return res.status(404).json({ error: 'Listing not found or not owned' });
+    res.json(row);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.delete('/api/listings/:id', authenticateToken, async (req, res) => {
+  if (!req.user.partnerId) return res.status(403).json({ error: 'Not a partner' });
+  const { id } = req.params;
+  try {
+    await query('DELETE FROM listings WHERE id=$1 AND partner_id=$2', [id, req.user.partnerId]);
+    res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
