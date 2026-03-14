@@ -6,6 +6,7 @@ export default defineConfig({
   plugins: [react()],
   base: './',
   build: {
+    target: 'es2018',
     outDir: 'docs',
     emptyOutDir: true,
     assetsDir: 'assets',

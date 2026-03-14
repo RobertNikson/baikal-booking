@@ -57,7 +57,7 @@ const PartnerDashboard = () => {
       try {
         const res = await fetch(`${API_BASE}/locations`);
         const data = await res.json();
-        setLocations(data);
+        setLocations(Array.isArray(data) ? data : []);
       } catch (e) { console.error(e); }
     };
 
