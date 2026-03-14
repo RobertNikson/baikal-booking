@@ -8,7 +8,7 @@ const getWebApp = () => {
   return null;
 };
 
-const API_BASE = 'https://auction-gulf-communication-soundtrack.trycloudflare.com/api';
+const API_BASE = 'https://cup-boundary-parliament-shirts.trycloudflare.com/api';
 
 const PartnerDashboard = () => {
   const [user, setUser] = useState(null);
