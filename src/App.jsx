@@ -97,10 +97,10 @@ export default function App() {
 
   return (
     <div className="flex flex-col h-screen bg-gray-50 text-gray-900 font-sans overflow-hidden relative">
-      {/* Background Image */}
+      {/* Background Image (User Provided Map) */}
       <div 
-        className="absolute inset-0 z-0 pointer-events-none opacity-10 bg-cover bg-center"
-        style={{ backgroundImage: 'url("https://images.unsplash.com/photo-1551844806-c841198a68b8?q=80&w=2000")' }}
+        className="absolute inset-0 z-0 pointer-events-none opacity-20 bg-contain bg-center bg-no-repeat"
+        style={{ backgroundImage: 'url("./baikal-map.jpg")' }}
       ></div>
 
       <div className="bg-white/80 backdrop-blur-md px-5 py-4 border-b flex items-center justify-between shadow-sm shrink-0 z-10">
