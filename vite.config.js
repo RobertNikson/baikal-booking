@@ -4,7 +4,7 @@ import { resolve } from 'path';
 
 export default defineConfig({
   plugins: [react()],
-  base: './',
+  base: '/baikal-booking/',
   build: {
     target: 'es2018',
     outDir: 'docs',
