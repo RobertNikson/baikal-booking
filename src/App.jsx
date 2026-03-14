@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { MessageSquare, Calendar, Search, Send, User, MapPin, ChevronRight } from 'lucide-react';
 
 const API_BASE = 'https://auction-gulf-communication-soundtrack.trycloudflare.com/api';
@@ -48,6 +48,7 @@ export default function App() {
   const [listings, setListings] = useState([]);
   const [locations, setLocations] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
+  const messagesEndRef = useRef(null);
 
   useEffect(() => {
     const initAuth = async () => {
@@ -82,6 +83,10 @@ export default function App() {
     initAuth();
     fetchLocations();
   }, []);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+  }, [messages, isLoading]);
 
   const sendMessage = async () => {
     if (!input.trim()) return;
@@ -137,7 +142,7 @@ export default function App() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto pb-32 z-10 relative">
+      <div className="flex-1 overflow-y-auto pb-48 z-10 relative">
         {activeTab === 'chat' ? (
           <div className="p-5 space-y-5">
             {/* Horizontal Location Picker in Chat */}
@@ -165,6 +170,7 @@ export default function App() {
               </div>
             ))}
             {isLoading && <div className="text-[10px] font-bold text-gray-300 uppercase tracking-widest pl-2 animate-pulse">Помощник думает...</div>}
+            <div ref={messagesEndRef} className="h-2" />
           </div>
         ) : (
           <div className="p-5 space-y-6">
@@ -265,7 +271,7 @@ export default function App() {
       )}
 
       {activeTab === 'chat' && (
-        <div className="fixed bottom-16 left-0 right-0 p-5 bg-white/80 backdrop-blur-xl border-t z-50">
+        <div className="fixed bottom-20 left-0 right-0 p-4 bg-white/80 backdrop-blur-xl border-t z-50">
           <div className="flex gap-2 bg-white border border-gray-100 p-2 rounded-[24px] shadow-sm">
             <input value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && sendMessage()} placeholder="Напр: жилье на Ольхоне" className="flex-1 bg-transparent px-4 py-3 outline-none text-[15px]" />
             <button onClick={sendMessage} className="bg-blue-600 text-white p-4 rounded-[20px] shadow-lg active:scale-90 transition-transform"><Send size={20} /></button>
@@ -273,7 +279,7 @@ export default function App() {
         </div>
       )}
 
-      <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t py-4 flex justify-around z-50 shadow-2xl">
+      <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t py-2.5 flex justify-around z-50 shadow-2xl">
         <button onClick={() => setActiveTab('chat')} className={`flex flex-col items-center gap-1.5 transition-all ${activeTab === 'chat' ? 'text-blue-600 scale-110' : 'text-gray-300 hover:text-gray-400'}`}>
           <MessageSquare size={26} strokeWidth={2.5} />
           <span className="text-[9px] font-black uppercase tracking-widest">ИИ-Чат</span>
