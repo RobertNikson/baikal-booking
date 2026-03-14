@@ -1,18 +1,60 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ru">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>BaikalRent Partner</title>
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="modulepreload" crossorigin href="./assets/jsx-runtime-Cx3FU591-9iLGAKLJ-9iLGAKLJ.js">
-    <link rel="modulepreload" crossorigin href="./assets/jsx-runtime-QaUU7cJ9-D-Vgn6Bz-CXxXHfjb.js">
-    <script type="module" crossorigin src="./assets/partner-hu2xd9GW.js"></script>
-    <link rel="modulepreload" crossorigin href="./assets/jsx-runtime-QaUU7cJ9-QaUU7cJ9-57luOlfY.js">
-    <link rel="stylesheet" crossorigin href="./assets/jsx-runtime-QaUU7cJ9-QaUU7cJ9-QaUU7cJ9.css">
-  </head>
-  <body>
-    <div id="root"></div>
-  </body>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Partner Cabinet</title>
+  <style>
+    body{font-family:Inter,Arial,sans-serif;background:#0b1220;color:#e7eefc;margin:0;padding:16px}
+    .card{background:#121b2e;border:1px solid #24314f;border-radius:12px;padding:12px;margin-bottom:12px}
+    input,select,button,textarea{width:100%;padding:10px;border-radius:10px;border:1px solid #30406a;background:#0f1729;color:#e7eefc;margin-top:6px}
+    button{cursor:pointer}
+    .row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+    code{word-break:break-all}
+  </style>
+</head>
+<body>
+  <h2>Partner Cabinet (MVP)</h2>
+  <div class="card">
+    <label>Partner ID</label>
+    <input id="partnerId" placeholder="uuid" />
+    <button id="load">Загрузить дашборд</button>
+    <pre id="out"></pre>
+  </div>
+
+  <div class="card">
+    <h3>Создать интеграцию</h3>
+    <div class="row">
+      <select id="itype"><option>api</option><option>csv</option><option>ical</option></select>
+      <select id="iauth"><option>api_key</option><option>oauth2</option><option>basic</option><option>none</option></select>
+    </div>
+    <input id="ibase" placeholder="https://partner.example/api" />
+    <button id="createIntegration">Создать</button>
+  </div>
+
+  <script>
+    const out = document.getElementById('out');
+    const partnerId = document.getElementById('partnerId');
+
+    async function load() {
+      if (!partnerId.value) return;
+      const r = await fetch(`/partners/${partnerId.value}/dashboard`);
+      out.textContent = JSON.stringify(await r.json(), null, 2);
+    }
+    document.getElementById('load').onclick = load;
+
+    document.getElementById('createIntegration').onclick = async () => {
+      const payload = {
+        type: document.getElementById('itype').value,
+        authType: document.getElementById('iauth').value,
+        baseUrl: document.getElementById('ibase').value || undefined,
+      };
+      const r = await fetch(`/partners/${partnerId.value}/integrations`, {
+        method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify(payload)
+      });
+      out.textContent = JSON.stringify(await r.json(), null, 2);
+      load();
+    }
+  </script>
+</body>
 </html>
