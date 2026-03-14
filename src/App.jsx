@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { MessageSquare, Calendar, Search, Send, User, MapPin, ChevronRight } from 'lucide-react';
 
-const API_BASE = 'https://cup-boundary-parliament-shirts.trycloudflare.com/api';
+const API_BASE = 'https://155.212.230.3.sslip.io:8443/api';
 
 const LOCATIONS = [
   { name: 'Листвянка', image: 'https://images.unsplash.com/photo-1548013146-72479768bbaa?q=80&w=1000', description: 'Ворота Байкала: нерпинарий, музей, набережная, катера.' },

@@ -8,7 +8,7 @@ const getWebApp = () => {
   return null;
 };
 
-const API_BASE = 'https://cup-boundary-parliament-shirts.trycloudflare.com/api';
+const API_BASE = 'https://155.212.230.3.sslip.io:8443/api';
 
 const PartnerDashboard = () => {
   const [user, setUser] = useState(null);
