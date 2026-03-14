@@ -100,7 +100,8 @@ export default function App() {
         body: JSON.stringify({ message: text, history: messages.slice(-5) })
       });
       const data = await res.json();
-      setMessages((m) => [...m, { id: Date.now() + 1, role: 'ai', text: data.text || 'Не удалось получить ответ.' }]);
+      const answer = data?.text || data?.error || 'Не удалось получить ответ.';
+      setMessages((m) => [...m, { id: Date.now() + 1, role: 'ai', text: answer }]);
       if (data.listings && data.listings.length > 0) {
         setListings(data.listings);
         setActiveTab('catalog');
