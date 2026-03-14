@@ -96,8 +96,14 @@ export default function App() {
   };
 
   return (
-    <div className="flex flex-col h-screen bg-gray-50 text-gray-900 font-sans overflow-hidden">
-      <div className="bg-white px-5 py-4 border-b flex items-center justify-between shadow-sm shrink-0">
+    <div className="flex flex-col h-screen bg-gray-50 text-gray-900 font-sans overflow-hidden relative">
+      {/* Background Image */}
+      <div 
+        className="absolute inset-0 z-0 pointer-events-none opacity-10 bg-cover bg-center"
+        style={{ backgroundImage: 'url("https://images.unsplash.com/photo-1551844806-c841198a68b8?q=80&w=2000")' }}
+      ></div>
+
+      <div className="bg-white/80 backdrop-blur-md px-5 py-4 border-b flex items-center justify-between shadow-sm shrink-0 z-10">
         <div className="font-extrabold text-2xl tracking-tighter text-blue-600">BaikalRent</div>
         <div className="flex items-center gap-2">
           <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest bg-gray-50 px-2 py-1 rounded-lg border">{user?.full_name || 'Гость'}</span>
