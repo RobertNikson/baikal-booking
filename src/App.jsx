@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { MessageSquare, Calendar, Search, Send, User, MapPin, ChevronRight } from 'lucide-react';
 
-const API_BASE = 'https://331a6527c7712888-155-212-230-3.serveousercontent.com/api';
+const API_BASE = 'https://auction-gulf-communication-soundtrack.trycloudflare.com/api';
 
 const LOCATIONS = [
   { name: 'Листвянка', image: 'https://images.unsplash.com/photo-1548013146-72479768bbaa?q=80&w=1000', description: 'Ворота Байкала: нерпинарий, музей, набережная, катера.' },
