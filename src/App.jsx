@@ -3,6 +3,31 @@ import { MessageSquare, Calendar, Search, Send, User, MapPin, ChevronRight } fro
 
 const API_BASE = 'https://331a6527c7712888-155-212-230-3.serveousercontent.com/api';
 
+const LOCATIONS = [
+  { name: 'Листвянка', image: 'https://images.unsplash.com/photo-1548013146-72479768bbaa?q=80&w=1000', description: 'Ворота Байкала: нерпинарий, музей, набережная, катера.' },
+  { name: 'Большие Коты', image: 'https://images.unsplash.com/photo-1472396961693-142e6e269027?q=80&w=1000', description: 'Тихий поселок для треккинга и спокойного отдыха.' },
+  { name: 'Порт Байкал', image: 'https://images.unsplash.com/photo-1506197603052-3cc9c3a201bd?q=80&w=1000', description: 'Историческая точка КБЖД, прогулки и виды на озеро.' },
+  { name: 'Большое Голоустное', image: 'https://images.unsplash.com/photo-1469474968028-56623f02e42e?q=80&w=1000', description: 'Пляжи, смотровые точки и выезды на природу.' },
+  { name: 'Остров Ольхон', image: 'https://images.unsplash.com/photo-1590505299054-938833919967?q=80&w=1000', description: 'Место силы: Шаманка, степи, закаты и туры на мыс Хобой.' },
+  { name: 'Малое море', image: 'https://images.unsplash.com/photo-1518156677180-95a2893f3e9f?q=80&w=1000', description: 'Бухты и базы отдыха, удобный формат для семей.' },
+  { name: 'Хужир', image: 'https://images.unsplash.com/photo-1501785888041-af3ef285b470?q=80&w=1000', description: 'Главная точка Ольхона: кафе, экскурсии, прокат.' },
+  { name: 'Байкальск', image: 'https://images.unsplash.com/photo-1482192505345-5655af888cc4?q=80&w=1000', description: 'Южное побережье, горнолыжка и активный отдых.' },
+  { name: 'Бухта Песчаная', image: 'https://images.unsplash.com/photo-1439066615861-d1af74d74000?q=80&w=1000', description: 'Одна из самых красивых бухт, пляжный формат отдыха.' },
+  { name: 'Бухта Зуун Хагуун', image: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?q=80&w=1000', description: 'Удаленная бухта для приватного и спокойного отдыха.' },
+  { name: 'Сарайский пляж', image: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?q=80&w=1000', description: 'Длинный песчаный пляж рядом с Хужиром.' },
+  { name: 'Гранатовый пляж', image: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?q=80&w=1000', description: 'Живописная точка для фотосетов и отдыха у воды.' },
+];
+
+const CATEGORIES = [
+  { id: 'all', name: 'Все', icon: '🌟' },
+  { id: 'stay', name: 'Проживание', icon: '🏠' },
+  { id: 'rental', name: 'Прокат', icon: '🚲' },
+  { id: 'food', name: 'Покушать', icon: '🍽️' },
+  { id: 'excursion', name: 'Экскурсии', icon: '🗺️' },
+  { id: 'poi', name: 'Интересное', icon: '🏛️' },
+  { id: 'bundle', name: 'Пакеты', icon: '🎁' },
+];
+
 const getWebApp = () => {
   if (typeof window !== 'undefined' && window.Telegram && window.Telegram.WebApp) {
     return window.Telegram.WebApp;
@@ -12,11 +37,12 @@ const getWebApp = () => {
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('chat');
+  const [activeCategory, setActiveCategory] = useState('all');
   const [selectedLocation, setSelectedLocation] = useState(null);
   const [user, setUser] = useState(null);
   const [token, setToken] = useState(localStorage.getItem('baikal_user_token'));
   const [messages, setMessages] = useState([
-    { id: 1, role: 'ai', text: 'Привет! Я твой ИИ-консьерж BaikalRent. Могу помочь с бронированием жилья, проката и экскурсий.' },
+    { id: 1, role: 'ai', text: 'Привет! Я твой ИИ-консьерж BaikalRent v1.2.1. Могу помочь с бронированием жилья, проката и экскурсий.' },
   ]);
   const [input, setInput] = useState('');
   const [listings, setListings] = useState([]);
@@ -104,7 +130,7 @@ export default function App() {
       ></div>
 
       <div className="bg-white/80 backdrop-blur-md px-5 py-4 border-b flex items-center justify-between shadow-sm shrink-0 z-10">
-        <div className="font-extrabold text-2xl tracking-tighter text-blue-600">BaikalRent <span className="text-[10px] font-normal opacity-30">v1.2.0</span></div>
+        <div className="font-extrabold text-2xl tracking-tighter text-blue-600">BaikalRent <span className="text-[10px] font-normal opacity-30">v1.2.1</span></div>
         <div className="flex items-center gap-2">
           <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest bg-gray-50 px-2 py-1 rounded-lg border">{user?.full_name || 'Гость'}</span>
         </div>
@@ -147,7 +173,7 @@ export default function App() {
             <div className="space-y-3">
               <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Что ищем?</p>
               <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar -mx-5 px-5">
-                {categories.map(cat => (
+                {CATEGORIES.map(cat => (
                   <button
                     key={cat.id}
                     onClick={() => setActiveCategory(cat.id)}
@@ -222,10 +248,10 @@ export default function App() {
       {selectedLocation && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-md flex items-center justify-center p-6 z-[100] animate-in fade-in duration-300" onClick={() => setSelectedLocation(null)}>
           <div className="bg-white rounded-[40px] overflow-hidden max-w-sm w-full shadow-2xl animate-in zoom-in duration-300" onClick={(e) => e.stopPropagation()}>
-            <img src={selectedLocation.metadata?.image_url || 'https://via.placeholder.com/400'} className="w-full h-56 object-cover" alt="" />
+            <img src={selectedLocation.metadata?.image_url || selectedLocation.image || 'https://via.placeholder.com/400'} className="w-full h-56 object-cover" alt="" />
             <div className="p-8">
               <h2 className="text-3xl font-extrabold text-gray-800 tracking-tight">{selectedLocation.name}</h2>
-              <p className="text-gray-500 mt-4 leading-relaxed text-[15px]">{selectedLocation.metadata?.description || 'Место, которое стоит посетить. Подробности появятся совсем скоро.'}</p>
+              <p className="text-gray-500 mt-4 leading-relaxed text-[15px]">{selectedLocation.metadata?.description || selectedLocation.description || 'Место, которое стоит посетить.'}</p>
               <button 
                 onClick={() => { setInput(`Расскажи про ${selectedLocation.name}`); setSelectedLocation(null); setActiveTab('chat'); }} 
                 className="w-full bg-blue-600 text-white py-5 rounded-2xl font-bold mt-8 shadow-xl shadow-blue-100 active:scale-95 transition-all"
