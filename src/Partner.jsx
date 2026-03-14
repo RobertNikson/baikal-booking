@@ -8,7 +8,7 @@ const getWebApp = () => {
   return null;
 };
 
-const API_BASE = 'https://9b3d2c51f63164e6-155-212-230-3.serveousercontent.com/api';
+const API_BASE = 'https://331a6527c7712888-155-212-230-3.serveousercontent.com/api';
 
 const PartnerDashboard = () => {
   const [user, setUser] = useState(null);
