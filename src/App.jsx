@@ -110,16 +110,17 @@ export default function App() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto pb-32">
+      <div className="flex-1 overflow-y-auto pb-32 z-10 relative">
         {activeTab === 'chat' ? (
           <div className="p-5 space-y-5">
+            {/* Horizontal Location Picker in Chat */}
             <div className="flex gap-3 overflow-x-auto pb-2 no-scrollbar -mx-5 px-5">
-              {locations.map((loc) => (
-                <button key={loc.id} onClick={() => setSelectedLocation(loc)} className="min-w-[150px] bg-white border border-gray-100 rounded-[24px] overflow-hidden text-left shadow-sm active:scale-95 transition-all">
-                  <img src={loc.metadata?.image_url || 'https://via.placeholder.com/150'} className="w-full h-24 object-cover" alt="" />
+              {(locations.length > 0 ? locations : LOCATIONS).map((loc) => (
+                <button key={loc.name || loc.id} onClick={() => setSelectedLocation(loc)} className="min-w-[150px] bg-white/90 border border-gray-100 rounded-[24px] overflow-hidden text-left shadow-sm active:scale-95 transition-all">
+                  <img src={loc.metadata?.image_url || loc.image || 'https://via.placeholder.com/150'} className="w-full h-24 object-cover" alt="" />
                   <div className="p-3">
                     <div className="font-bold text-xs truncate text-gray-800">{loc.name}</div>
-                    <div className="text-[9px] text-gray-400 font-bold uppercase mt-1">О локации</div>
+                    <div className="text-[9px] text-gray-400 font-bold uppercase mt-1">Подробнее</div>
                   </div>
                 </button>
               ))}
@@ -130,7 +131,7 @@ export default function App() {
                 <div className={`max-w-[85%] px-5 py-3 rounded-[24px] shadow-sm text-[15px] leading-relaxed ${
                   msg.role === 'user' 
                     ? 'bg-blue-600 text-white rounded-tr-none font-medium' 
-                    : 'bg-white border border-gray-100 text-gray-800 rounded-tl-none'
+                    : 'bg-white/90 border border-gray-100 text-gray-800 rounded-tl-none'
                 }`}>
                   {msg.text}
                 </div>
@@ -139,32 +140,81 @@ export default function App() {
             {isLoading && <div className="text-[10px] font-bold text-gray-300 uppercase tracking-widest pl-2 animate-pulse">Помощник думает...</div>}
           </div>
         ) : (
-          <div className="p-5 space-y-5">
-            <h2 className="text-2xl font-bold text-gray-800">Каталог Байкала</h2>
-            {listings.map((l) => (
-              <div key={l.id} className="bg-white border border-gray-50 rounded-[32px] p-5 shadow-sm flex flex-col gap-4 animate-in fade-in zoom-in-95 duration-200">
-                <img src={l.metadata?.image_url || 'https://via.placeholder.com/400'} className="w-full h-48 rounded-[24px] object-cover shadow-inner" alt="" />
-                <div>
-                  <div className="flex justify-between items-start">
-                    <div className="font-bold text-lg text-gray-800 leading-tight">{l.title}</div>
-                    <div className="bg-blue-50 text-blue-600 text-[10px] font-bold px-2 py-1 rounded-lg uppercase tracking-wider">{l.category}</div>
-                  </div>
-                  <p className="text-sm text-gray-500 mt-2 line-clamp-2 leading-relaxed">{l.description}</p>
-                  <div className="flex items-center justify-between mt-5 pt-4 border-t border-gray-50">
-                    <div className="font-extrabold text-xl text-blue-600">{l.metadata?.price_label || 'Цена по запросу'}</div>
-                    <button onClick={() => handleBooking(l)} className="bg-blue-600 text-white px-6 py-3 rounded-2xl font-bold shadow-lg shadow-blue-100 active:scale-95 transition-transform flex items-center gap-2">
-                      Забронировать <ChevronRight size={16} />
-                    </button>
+          <div className="p-5 space-y-6">
+            <h2 className="text-2xl font-black text-gray-800 tracking-tight">Каталог Байкала</h2>
+            
+            {/* Category Chips */}
+            <div className="space-y-3">
+              <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Что ищем?</p>
+              <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar -mx-5 px-5">
+                {categories.map(cat => (
+                  <button
+                    key={cat.id}
+                    onClick={() => setActiveCategory(cat.id)}
+                    className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl whitespace-nowrap text-sm font-bold transition-all shadow-sm ${
+                      activeCategory === cat.id ? 'bg-blue-600 text-white scale-105 shadow-blue-100' : 'bg-white/90 text-gray-600 border border-gray-100'
+                    }`}
+                  >
+                    <span>{cat.icon}</span>
+                    <span>{cat.name}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Location Chips */}
+            <div className="space-y-3">
+              <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Где именно?</p>
+              <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar -mx-5 px-5">
+                <button 
+                  onClick={() => setSelectedLocation(null)}
+                  className={`px-4 py-2.5 rounded-2xl whitespace-nowrap text-sm font-bold transition-all shadow-sm ${
+                    !selectedLocation ? 'bg-blue-600 text-white' : 'bg-white/90 text-gray-600 border border-gray-100'
+                  }`}
+                >
+                  📍 Все места
+                </button>
+                {(locations.length > 0 ? locations : LOCATIONS).map((loc) => (
+                  <button
+                    key={loc.name || loc.id}
+                    onClick={() => setSelectedLocation(loc)}
+                    className={`px-4 py-2.5 rounded-2xl whitespace-nowrap text-sm font-bold transition-all shadow-sm ${
+                      (selectedLocation?.id === loc.id || selectedLocation?.name === loc.name) ? 'bg-blue-600 text-white' : 'bg-white/90 text-gray-600 border border-gray-100'
+                    }`}
+                  >
+                    {loc.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-4 pt-2">
+              {listings.filter(l => activeCategory === 'all' || l.category === activeCategory).map((l) => (
+                <div key={l.id} className="bg-white/90 border border-gray-50 rounded-[32px] p-5 shadow-sm flex flex-col gap-4 animate-in fade-in zoom-in-95 duration-200">
+                  <img src={l.metadata?.image_url || 'https://via.placeholder.com/400'} className="w-full h-48 rounded-[24px] object-cover shadow-inner" alt="" />
+                  <div>
+                    <div className="flex justify-between items-start">
+                      <div className="font-bold text-lg text-gray-800 leading-tight">{l.title}</div>
+                      <div className="bg-blue-50 text-blue-600 text-[10px] font-bold px-2 py-1 rounded-lg uppercase tracking-wider">{l.category}</div>
+                    </div>
+                    <p className="text-sm text-gray-500 mt-2 line-clamp-2 leading-relaxed">{l.description}</p>
+                    <div className="flex items-center justify-between mt-5 pt-4 border-t border-gray-50">
+                      <div className="font-extrabold text-xl text-blue-600">{l.metadata?.price_label || 'Цена по запросу'}</div>
+                      <button onClick={() => handleBooking(l)} className="bg-blue-600 text-white px-6 py-3 rounded-2xl font-bold shadow-lg shadow-blue-100 active:scale-95 transition-transform flex items-center gap-2">
+                        Забронировать <ChevronRight size={16} />
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
-            {listings.length === 0 && (
-              <div className="text-center py-20 text-gray-300">
-                <Search size={48} className="mx-auto mb-4 opacity-20" />
-                <p className="font-medium">Напишите ИИ-помощнику,<br/>чтобы он подобрал варианты под ваш запрос.</p>
-              </div>
-            )}
+              ))}
+              {listings.length === 0 && (
+                <div className="text-center py-16 bg-white/50 rounded-[32px] border-2 border-dashed border-gray-200">
+                  <Search size={40} className="mx-auto mb-4 text-gray-300" />
+                  <p className="font-bold text-gray-400">Помощник подберет<br/>варианты в чате!</p>
+                  <button onClick={() => setActiveTab('chat')} className="mt-4 text-blue-600 font-bold underline">Перейти в чат</button>
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>
